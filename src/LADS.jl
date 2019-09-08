@@ -83,6 +83,7 @@ function isorthogonal(x::Array{Float64, 1}, y::Array{Float64, 1})
     return false
   end
 end
+export isorthogonal
 
 function calcanglebetween(x::Array{Float64, 1}, y::Array{Float64, 1})
   @assert length(x)==length(y)
@@ -660,7 +661,7 @@ function sumu!(y, u)
   # y[h] -= sum(y)
   @assert(abs(sum(y)/h - u) < 0.1^10)
 end
-
+export sumu!
 """
   sumu_rbc!(y, u)
 
@@ -1565,7 +1566,7 @@ function remove_zero_datapoints(x, y)
     end
     return xclean, yclean
 end
-
+export remove_zero_datapoints
 """
   zero_index(lypspec::Array{Float64, 1})
 
@@ -1588,5 +1589,5 @@ function zero_index(lypspec::Array{Float64, 1})
     ind_cross = -b/a;
     return ind_cross
 end
-
+export zero_index
 end # module
