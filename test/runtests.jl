@@ -1,7 +1,59 @@
 using LADS
 using Test
-using Statistics
+using Statistics, LinearAlgebra
+import Random.seed!
+# set random seed
+seed!(1234);
+
 @testset "LADS.jl" begin
+
+#------------------------------------------------------------------------------
+# unit test for lorenzFlow and lorenzJacobian functions
+# Get the Lorenz System running
+sigma = 10; rho = 28; beta = 8/3;
+p = [sigma, rho, beta];
+x0 = rand(3); # δx = zeros(3); δx[1] = 10^-10;
+J = lorenzJacobian(x0, p);
+f0 = lorenzFlow(x0, p);
+dfdx = zeros(3, 3);
+magδx = 10^-8;
+for j = 1:3
+    δx = zeros(3); δx[j] = magδx;
+    dfdx[:, j] = ((lorenzFlow(x0+δx, p) - f0)/magδx)
+end
+
+# println(J)
+# println(dfdx)
+# println(J-dfdx)
+# println(norm(J - dfdx))
+# println(norm(J - dfdx) < length(J)*magδx*10)
+@test norm(J - dfdx) < length(J)*magδx*10
+
+
+#------------------------------------------------------------------------------
+# unit test for modelAMap and modelAJacobian functions
+# Set parameters and test point
+a = 0.4; b = 1.3; L = 128;
+p = [a, b];
+x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
+J = modelAJacobian(x0, p);
+f0 = modelAMap(x0, p);
+dfdx = zeros(L, L);
+magδx = 10^-8;
+for j = 1:L
+    δx = zeros(L); δx[j] = magδx;
+    dfdx[:, j] = ((modelAMap(x0+δx, p) - f0)/magδx)
+end
+
+# println(J)
+# println(dfdx)
+# println(J-dfdx)
+# println(norm(J - dfdx))
+# println(norm(J - dfdx) < length(J)*magδx*10)
+@test norm(J - dfdx) < length(J)*magδx*10
+
+
+#------------------------------------------------------------------------------
 # unit test for zero_index function
 a = rand(100);
 sort(a)
@@ -78,14 +130,6 @@ sumu!(y, u)
 
 
 #------------------------------------------------------------------------------
-# Unit testing for set_ϵ function
-
-
-#------------------------------------------------------------------------------
-# Unit testing for set_u₀ function
-
-
-#------------------------------------------------------------------------------
 # Unit testing for isturbulent function
 
 
@@ -107,24 +151,10 @@ sumu!(y, u)
 
 #------------------------------------------------------------------------------
 # Unit testing for isorthogonal function
-x = zeros(10); y = zeros(10); x[1] = 1; y[2] = 1;
-@test isorthogonal(x, y) == true
-y[1] = 1; y[2] = 0;
-@test isorthogonal(x, y) == false
+# x = zeros(10); y = zeros(10); x[1] = 1; y[2] = 1;
+# @test isorthogonal(x, y) == true
+# y[1] = 1; y[2] = 0;
+# @test isorthogonal(x, y) == false
 
-#------------------------------------------------------------------------------
-# Unit testing for set_μ function
-
-
-    #------------------------------------------------------------------------------
-    # Unit testing for set_K function
-
-
-    #------------------------------------------------------------------------------
-    # Unit testing for set_b function
-
-
-    #------------------------------------------------------------------------------
-    # Unit testing for set_a functionend
 
 end
