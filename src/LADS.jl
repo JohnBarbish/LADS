@@ -396,8 +396,14 @@ function clvGinelliForwardDebug(flow, jacobian, p, δt, x0, delay, ns, ne, cdela
     # the number of total steps for the system is the number of samples (ns)
     # * the number of steps per sample (nsps)
     numsteps = ns*nsps
-    # warm up the lattice
-    x0 = fd1(flow, x0, p, δt, delay)
+    # warm up the lattice and Gram-Schmidt Vectors
+    # x0 = fd1(flow, x0, p, δt, delay)
+    lambdaInst = zeros(ne, delay)
+    for i=1:delay
+        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        lambdaInst[:, i] = log.(diag(r))/(nsps*δt)
+    end
+    println(delta)
     println("lattice warmed up, starting GSV evolution.")
     #= initialize  variables for evolution of delta and lattice, calculating Q
     and lypspec at all times =#
@@ -432,19 +438,20 @@ function clvGinelliForwardDebug(flow, jacobian, p, δt, x0, delay, ns, ne, cdela
     println(lypspecGS)
     println("finished forward evolution of CLVs")
     # return results of forward component of Ginelli's method for CLV computation
-    return yS, QS, RS, Rw, lypspecGS, Qw
+    return yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst
 end
 
 function covariantLyapunovVectorsDebug(flow, jacobian, p, δt, x0, delay, ns, ne,
                                   cdelay, nsps)
-    yS, QS, RS, Rw, lypspecGS, Qw = clvGinelliForwardDebug(flow, jacobian, p, δt, x0,
+    yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst = clvGinelliForwardDebug(flow,
+                                                  jacobian, p, δt, x0,
                                                   delay, ns, ne, cdelay, nsps)
     CS, Cw = clvGinelliBackwardsDebug(QS, RS, Rw)
     lypspecCLV = lyapunovSpectrumCLV(CS, RS, nsps, δt)
     println("CLV Lyapunov Spectrum: ")
     println(lypspecCLV)
 
-    return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw
+    return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst
 end
 export covariantLyapunovVectorsDebug
 #-----------------------------------------------------------------------------#
@@ -480,10 +487,104 @@ function kyd(spectrum::Array{Float64, 1})::Float64
 end
 export kyd
 
+#-----------------------------------------------------------------------------#
+# functions useful for calculating Domination of Osledet Splitting
+"""
+  DOS(fid::HDF5.HDF5File, window::Int64)
+Determines the Domination of Osledet Splitting based on recorded C and R matrices.
+"""
+function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type currently, need to fix
+  # fid = h5open(datafile, "r")
+#   Rhandle = fid["R"];
+#   Chandle = fid["C"];
+  ns = size(RS, 3);
+  ne = size(CS, 1);
+  nu = zeros(ne, ne);
+  nutemp = zeros(ne, ne);
+  CLV_growth = zeros(ne);
+  # @assert(window < ns && window > 0) # checks that window is not too large
+  for i=1:ns-window
+    if Int(rem(i, ns/10)) == 0
+      println("percent completion: ", i/ns*100);
+    end
+    # added for loop to go have the instantaneous CLV growth averaged over window
+    CLV_growth = zeros(ne);
+    for j=0:window-1
+      C1 = CS[:, :, i+j]
+      R2 = RS[:, :, i+1+j]
+      CLV_growth += LADS.clvInstantGrowth(C1, R2);
+    end
+    CLV_growth /= window;
+    nutemp = dosViolations(CLV_growth)
+    nu += nutemp;
+  end
+  nu /= (ns-window)
+  return nu
+end
+export DOS
+
+"""
+  dosViolations(CLV_growth::Array{Float64, 1})
+Determines nu matrix of total violations from list of instantaneous growth.
+"""
+function dosViolations(CLV_growth::Array{Float64, 1})
+  ne = size(CLV_growth, 1);
+  nu = Matrix(1.0I, ne, ne);
+  # for i=1:ne
+  #   nu[i, i] = 1;
+  # end
+  for i=1:ne
+    for j=1:i-1
+      if CLV_growth[i] > CLV_growth[j]
+        nu[i, j] = 1; nu[j, i] = 1; # 1;
+      else
+        nu[i, j] = 0; nu[j, i] = 0; # 0;
+      end
+    end
+  end
+  return nu
+end
+
+
+#-----------------------------------------------------------------------------#
+# functions for calculating angle between CLVs along with subspaces spanned by
+# several CLVs into a manifold
+
+function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
+  # calculate minimum principal angle of specified subspaces in C
+  # initializes theta matrix to contain the mimimum angle
+  θ = zeros(size(C, 3))
+  for t=1:size(C, 3)
+    θ[t] = minimumManifoldAngle(C[:, :, t], uInd, sInd)
+  end
+  # return theta array containing minimum principal angle at each timestep
+  return θ
+end
+
+function minimumManifoldAngle(C::Array{Float64, 2}, uInd, sInd)
+    u1 = C[:, uInd]
+    u2 = C[:, sInd]
+    q1, = qr(u1); q2, = qr(u2)
+    q1 = q1[:, 1:length(uInd)]; q2 = q2[:, 1:length(sInd)]
+    theta = minimum(acos.(round.(svdvals(q2'*q1), digits=14)));
+    return theta
+end
+export minimumManifoldAngle
 
 
 #-----------------------------------------------------------------------------#
 # general purpose functions
+
+function cumulativeAverage(x::Array{Float64, 1})
+    ht = length(x)
+    xavg = zeros(ht)
+    xavg[1] = x[1];
+    for i=2:ht
+        xavg[i] = (xavg[i-1]*(i-1) + x[i])/i
+    end
+    return xavg
+end
+export cumulativeAverage
 
 # take array of numbers in and return 'histogram' of array
 """
