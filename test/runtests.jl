@@ -1,6 +1,6 @@
 using LADS
 using Test
-using Statistics, LinearAlgebra
+using Statistics, LinearAlgebra, HDF5
 import Random.seed!
 # set random seed
 seed!(1234);
@@ -54,12 +54,35 @@ end
 
 
 #------------------------------------------------------------------------------
-# unit test for zero_index function
+# unit test for tentMap and tentJacobian functions
+# Set parameters and test point
+mu = 0.2; K = 1.3; L = 128;
+p = [mu, K];
+x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
+J = tentJacobian(x0, p);
+f0 = tentMap(x0, p);
+dfdx = zeros(L, L);
+magδx = 10^-8;
+for j = 1:L
+    δx = zeros(L); δx[j] = magδx;
+    dfdx[:, j] = ((tentMap(x0+δx, p) - f0)/magδx)
+end
+
+# println(J)
+# println(dfdx)
+# println(J-dfdx)
+# println(norm(J - dfdx))
+# println(norm(J - dfdx) < length(J)*magδx*10)
+@test norm(J - dfdx) < length(J)*magδx*10
+
+
+#------------------------------------------------------------------------------
+# unit test for zeroIndex function
 a = rand(100);
 sort(a)
 a[10] = 0;
-@test isapprox(zero_index(a), 10) # 10.5 "zero_index Error: improper index found"
-# println("function:\tzero_index\t-\tpassed")
+@test isapprox(zeroIndex(a), 10) # 10.5 "zeroIndex Error: improper index found"
+# println("function:\tzeroIndex\t-\tpassed")
 
 #------------------------------------------------------------------------------
 # Unit testing for reomve_zero_datapoints function
@@ -106,6 +129,48 @@ xc, yc = remove_zero_datapoints(x, y)
 #------------------------------------------------------------------------------
 # Unit testing for CLV function
 
+# flow = linearFlow; jacobian = linearJacobian;
+# sigma = 10; rho = 28; beta = 8/3;
+K = 0.65; mu = 1.1; L = 256; seed!(1);
+x0 = rand(L)*0.03 - 0.1*ones(L); x1 = copy(x0);
+p = [mu K]; # [sigma rho beta];
+ne = 256;
+nsps = 2;
+tConverge = 200; # number of time units to look for convergence of QR values
+delay = Int(tConverge/(nsps));
+cdelay = Int(tConverge/(nsps));
+tSample = 100;
+ns = Int(tSample/(nsps));
+
+ht = length(x0);
+yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps)
+
+nsim = 25 # 50 # 10;
+datafile = "testTentMap2.h5"
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile)
+lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
+cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
+fid = h5open(datafile, "r")
+# global lypFile, cFile, rFile, cwFile, rwFile
+lypFile = read(fid["lypspecCLV"])
+cFile = read(fid, "c")
+rFile = read(fid, "r")
+cwFile = read(fid, "cw")
+rwFile = read(fid, "rw")
+# end
+close(fid)
+println("Error between in memory and file code versions is: ", norm(lypFile - lypspecCLV))
+
+println("Error in C matchup: \t", norm(CS - cFile))
+println("Error in R matchup: \t", norm(RS - rFile))
+println("Error in Cw matchup: \t", norm(Cw - cwFile))
+println("Error in Rw matchup: \t", norm(Rw - rwFile))
+
+@test norm(lypspecCLV-lypFile) == 0
+@test norm(CS-cFile) == 0
+@test norm(RS-rFile) == 0
+@test norm(Cw-cwFile) == 0
+@test norm(Rw-rwFile) == 0
 
 #------------------------------------------------------------------------------
 # Unit testing for C_creation function
