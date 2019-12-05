@@ -2,7 +2,7 @@ module LADS
 
 using Statistics, Random, LinearAlgebra
 import JLD: jldopen, read, close
-using HDF5
+using HDF5, ProgressMeter
 # We make the follow definitions for notation
 # Maps  - descrete time
 # Flows - continuous time
@@ -235,7 +235,7 @@ function lyapunovSpectrumCLVMap(datafile)
         ns =size(cH, 3); ne = size(cH, 1);
         lypspec = zeros(ne);
         C = zeros(ne, ne); R = zeros(ne, ne);
-        for i = 2:ns
+        @showprogress "CLV Exponents " for i = 2:ns
             C = reshape(cH[:, :, i-1], (ne, ne));
             R = reshape(rH[:, :, i], (ne, ne));
             lypspec += log.(clvInstantGrowth(C, R))
@@ -244,6 +244,28 @@ function lyapunovSpectrumCLVMap(datafile)
     end
     return lypspec
 end
+
+"""
+    clvInstantaneous(datafile::String, tS)
+    reads datafile and calculates the instantaneous clv's for each timestep tS,
+    assuming a sample exists after each specified element in tS
+"""
+function clvInstantaneous(datafile::String, tS)
+    h5open(datafile, "r") do fid
+        ns = length(tS); # number of samples to store
+        cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
+        ne = size(cH, 1);
+        global clvInst = zeros(ne, ns);
+        C = zeros(ne, ne); R = zeros(ne, ne);
+        for (i, t) in enumerate(tS)
+            C = reshape(cH[:, :, t], (ne, ne));
+            R = reshape(rH[:, :, t+1], (ne, ne));
+            clvInst[:, t] = log.(clvInstantGrowth(C, R))/nsps
+        end
+    end
+    return clvInst
+end
+export clvInstantaneous
 
 function clvGinelliBackwards(QS, RS, Rw)
     # initialize items for backward evolution
@@ -340,22 +362,15 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     nsResets = Int(ns/nsim)
     cdelayResets = Int(cdelay/nsim)
     # create data handles for storing the data and allocate the necesary
-    cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns),
-                     "chunk", (ne, ne, nsim))
-    rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns),
-                     "chunk", (ne, ne, nsim))
-    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns),
-                     "chunk", (ht, ne, nsim))
+    cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
+    rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
+    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
  #     jH = d_create(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
-    yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns),
-                     "chunk", (ht, nsim))
-    rwH = d_create(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay),
-                  "chunk", (ne, ne, nsim))
-    cwH = d_create(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay),
-                  "chunk", (ne, ne, nsim))
-    λH = d_create(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay),
-                    "chunk", (ne, nsim))
+    yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns))
+    rwH = d_create(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+    cwH = d_create(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    λH = d_create(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
     # store parameters of the run
     fid["parameters"] = p;
     fid["delay"] = delay;
@@ -376,7 +391,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     numsteps = ns*nsps
     # warm up the lattice and Gram-Schmidt Vectors
     λi = zeros(ne, nsim) # zeros(ne, delayResets)
-    for i=1:delayResets
+    @showprogress "Delay Completed " for i=1:delayResets
         for j=1:nsim
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             λi[:, j] = log.(diag(r))/(nsps)
@@ -394,7 +409,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     RS = zeros(ne, ne, nsim); # zeros(ne, ne, ns);
     QS = zeros(ht, ne, nsim); # zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    for i=1:nsResets
+    @showprogress "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
             yS[:, j] = x0;
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
@@ -414,7 +429,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     # create R data for warming up C
     Rw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
-    for i=1:cdelayResets
+    @showprogress "Forward Warmup Completed " for i=1:cdelayResets
         for j=1:nsim
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             RS[:, :, j] = r
@@ -463,10 +478,10 @@ function clvGinelliLongBackwards(datafile)
     # cwH[:,:, end] = C1;
     # CS[:, :, end] = C1;
     # warms up C matrix
-    for i = cdelayResets:-1:1
+    @showprogress "Warmup Completion " for i = cdelayResets:-1:1
         # read values from dataset
         trng = range((i-1)*nsim+1, length=nsim)
-        println("Warmup Completion:\t $(round((cdelayResets-i)/cdelayResets*100))%,\t Range:\t $trng")
+        # println("Warmup Completion:\t $(round((cdelayResets-i)/cdelayResets*100))%,\t Range:\t $trng")
         Rw = rwH[:, :, trng];
         # sets IC of CS
         Cw[:, :, end] = C;
@@ -492,10 +507,10 @@ function clvGinelliLongBackwards(datafile)
     # C1 = Matrix(1.0I, ne, ne);
     # C0 = zeros(ne, ne);
     # cwH[:,:, end] = C1;
-    for i = nsResets:(-1):1
+    @showprogress "Sample Completion " for i = nsResets:(-1):1
         # read values from dataset
         trng = range((i-1)*nsim+1, length=nsim)
-        println("Completion:\t $(round((nsResets-i)/nsResets*100))%,\t Range:\t $trng")
+        # println("Completion:\t $(round((nsResets-i)/nsResets*100))%,\t Range:\t $trng")
         RS = rH[:, :, trng];
         Cw[:, :, end] = C;
         for j=nsim-1:-1:1
@@ -589,10 +604,7 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with HD
     nutemp = zeros(ne, ne);
     CLV_growth = zeros(ne);
     # @assert(window < ns && window > 0) # checks that window is not too large
-    for i=1:ns-window
-        if Int(rem(i, ns/10)) == 0
-          println("percent completion: \t", i/ns*100);
-        end
+    @showprogress "Calculating DOS " for i=1:ns-window
         # added for loop to go have the instantaneous CLV growth averaged over window
         CLV_growth = zeros(ne);
         for j=0:window-1
@@ -604,10 +616,71 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with HD
         nutemp = dosViolations(CLV_growth)
         nu += nutemp;
     end
+    close(fid)
     nu /= (ns-window)
     return nu
 end
 
+"""
+  DOS(datafile::String, windows)
+Determines the Domination of Osledet Splitting based on recorded C and R matrices.
+"""
+function DOS(datafile::String, windows)
+    fid = h5open(datafile, "r")
+    rH = fid["r"];
+    cH = fid["c"];
+    ns = size(rH, 3);
+    ne = size(cH, 1);
+    nu = zeros(ne, ne);
+    nuDict = Dict();
+    nutemp = zeros(ne, ne);
+    CLV_growth = zeros(ne);
+    # @assert(window < ns && window > 0) # checks that window is not too large
+    mktemp() do path, io
+        fid = h5open(path, "w")
+        growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
+        @showprogress "Instant Growths " for i = 1:ns-1
+            C1 = reshape(cH[:, :, i], (ne, ne));
+            R2 = reshape(rH[:, :, i+1], (ne, ne));
+            fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
+        end
+        for window in windows
+            nu = zeros(ne, ne);
+            if window > 3
+                # new process, saves computation for larger window sizes
+                clvGrowth = zeros(ne);
+                for j=1:window
+                   clvGrowth += reshape(fid["growth"][:, j], ne);
+                end
+                clvGrowth /= window
+                nutemp = dosViolations(clvGrowth)
+                @showprogress "Window: $window " for i = 2:ns-window
+                   clvGrowth -= reshape(fid["growth"][:, i-1], ne)/window;
+                   clvGrowth += reshape(fid["growth"][:, i+window-1], ne)/window;
+                   nutemp += dosViolations(clvGrowth);
+                end
+                nu = nutemp/(ns-window);
+                nuDict[window] = nu;
+            else
+                # regular process
+                @showprogress "Window: $window " for i=1:ns-window
+                    # added for loop to go have the instantaneous CLV growth averaged over window
+                    CLV_growth = zeros(ne);
+                    for j=0:window-1
+                        CLV_growth += reshape(fid["growth"][:, i+j], ne);
+                    end
+                    CLV_growth /= window;
+                    nutemp = dosViolations(CLV_growth)
+                    nu += nutemp;
+                end
+                nu /= (ns-window)
+                nuDict[window] = nu;
+            end
+
+        end
+    end
+    return nuDict
+end
 """
   DOS(RS, CS, window::Int64)
 Determines the Domination of Osledet Splitting based on recorded C and R matrices.
@@ -669,15 +742,31 @@ end
 # functions for calculating angle between CLVs along with subspaces spanned by
 # several CLVs into a manifold
 
+function minimumManifoldAngle(datafile::String, uInd, sInd)
+    # calculate minimum principal angle of specified subspaces in C
+    # initializes theta matrix to contain the mimimum angle
+    fid = h5open(datafile, "r")
+    # rH = fid["r"];
+    cH = fid["c"];
+    ns = size(cH, 3);
+    ne = size(cH, 1);
+    θ = zeros(ns)
+    cTemp = zeros(ne, ne);
+    @showprogress "Manifold Angle " for t=1:ns
+        cTemp = reshape(cH[:, :, t], (ne, ne));
+        θ[t] = minimumManifoldAngle(cTemp, uInd, sInd)
+    end
+    close(fid)
+    # return theta array containing minimum principal angle at each timestep
+    return θ
+end
+
 function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
     # calculate minimum principal angle of specified subspaces in C
     # initializes theta matrix to contain the mimimum angle
     θ = zeros(size(C, 3))
     ns = size(C, 3)
-    for t=1:ns
-        if Int(rem(t, ns/10)) == 0
-            println("percent completion: ", t/ns*100);
-        end
+    @showprogress "Manifold Angle " for t=1:ns
         θ[t] = minimumManifoldAngle(C[:, :, t], uInd, sInd)
     end
     # return theta array containing minimum principal angle at each timestep
@@ -873,7 +962,7 @@ function allAngles(C::Array{Float64, 3}, normalized=true)
 end
 export allAngles
 """
-  allAngleDistribution(C::Array{Float64, 3}, nbins=100)
+  allAngleDistribution(C::Array{Float64, 3}, normalized=true, nbins=100, xlims=(0, pi))
 
   Returns angle between all vectors in set, assuming normal vectors.
 """
@@ -934,7 +1023,7 @@ function allAngleDistribution(datafile::String, normalized, nsim::Int64,
     data = zeros(ne, ne, nbins);
     count = zeros(ne, ne, nbins);
     boxWidth = (mx - mn)/nbins
-    for t = 1:nsResets
+    @showprogress "Calculating Angles " for t = 1:nsResets
         trng = range((t-1)*nsim+1, length=nsim)
         data = allAngles(cH[:, :, trng], normalized)
         for i=1:ne
@@ -950,5 +1039,22 @@ end
 
 export allAngleDistribution
 
+"""
+    localization(v, normalized=true)
+
+    Returns localization of vector based on the definition as outlined in
+    K. Kaneko, "Lyapunov analysis and information flow in coupled map lattices",
+    Physica D, vol. 23(1-3), 436-447, 1986.
+
+"""
+function localization(v, normalized=true)
+    if !normalized
+        return norm(v, 4)/norm(v)
+    else
+        return norm(v, 4)
+    end
+end
+
+export localization
 
 end # module
