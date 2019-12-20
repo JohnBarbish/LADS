@@ -555,6 +555,150 @@ function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay, ns, ne,
     return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw
 end
 export covariantLyapunovVectorsMap
+
+function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
+                                  cdelay, nsps)
+    yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst = clvGinelliForward(flow, jacobian, p, δt, x0,
+                                                  delay, ns, ne, cdelay, nsps)
+    CS, Cw = clvGinelliBackwards(QS, RS, Rw)
+    lypspecCLV = lyapunovSpectrumCLV(CS, RS, nsps, δt)
+    println("CLV Lyapunov Spectrum: ")
+    println(lypspecCLV)
+
+    return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw
+end
+export covariantLyapunovVectors
+function advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+    ht = length(x0);
+    v = zeros(ht);
+    for i=1:nsps
+        v = flow(x0, p);
+        J = jacobian(x0, p);
+        # advance delta and x0 by δt
+        delta = (J*δt + Matrix(1.0I, ht, ht))*delta
+        x0 = v*δt + x0
+    end
+    q, r = qr(delta)
+    sgn = Matrix(Diagonal(sign.(diag(r))))
+    r = sgn*r
+    delta = q*sgn
+
+    return x0, v, delta, r
+end
+# function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
+function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps)
+    # initialize local variables
+    ht = length(x0)
+    # construct set of perturbation vectors
+    delta = zeros(ht, ne)
+    for i=1:ne
+        delta[i, i] = 1;
+    end
+    # the number of total steps for the system is the number of samples (ns)
+    # * the number of steps per sample (nsps)
+    numsteps = ns*nsps
+    # warm up the lattice and Gram-Schmidt Vectors
+    # x0 = fd1(flow, x0, p, δt, delay)
+    lambdaInst = zeros(ne, delay)
+    for i=1:delay
+        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        lambdaInst[:, i] = log.(diag(r))/(nsps*δt)
+    end
+    # println(delta)
+    println("lattice warmed up, starting GSV evolution.")
+    #= initialize  variables for evolution of delta and lattice, calculating Q
+    and lypspec at all times =#
+    J = Matrix(1.0I, ht, ht)
+    # evolve delta and lattice by numsteps in forward direction
+    yS = zeros(ht, ns);
+    vn = zeros(ht, ns);
+    RS = zeros(ne, ne, ns);
+    QS = zeros(ht, ne, ns);
+    lypspecGS = zeros(ne)
+    for i=1:ns
+        yS[:, i] = x0;
+        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        vn[:, i] = v/norm(v);
+        RS[:, :, i] = r
+        QS[:, :, i] = delta
+        lypspecGS += log.(diag(r))/(ns*nsps*δt)
+    end
+    println("collected QR data.")
+    # create R data for warming up C
+    Rw = zeros(ne, ne, cdelay);
+    Qw = zeros(ht, ne, cdelay);
+    for i=1:cdelay
+        # advance delta and x0 by δt
+        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        Rw[:, :, i] = r
+        Qw[:, :, i] = delta
+    end
+    # finished forward evolution of lattice
+    # write lyapunov spectrum as calculated by the R components to file
+    println("the GSV Lyapunov Spectrum is:")
+    println(lypspecGS)
+    println("finished forward evolution of CLVs")
+    # return results of forward component of Ginelli's method for CLV computation
+    return yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst
+end
+
+
+function cEvolve(C, Rw, cdelay)
+    # evolve C backwards through Rw
+    # assumes that size(Rw, 3) == cdelay
+    ne = size(C, 2);
+    for i = cdelay:-1:1
+        # renormalizes C for each vector
+        for j=1:ne
+            C[:, j] = C[:, j]/norm(C[:, j])
+        end
+        # creates preceding C vector
+        C = inv(Rw[:, :, i])*C
+    end
+    return C
+end
+
+
+"""
+lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps)
+
+Returns the Lyapunov Spectrum using the Gram-Schmidt Method for computing the
+exponents.
+
+"""
+function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps)
+    # initialize local variables
+    ht = length(x0)
+    lattice = copy(x0)
+    lypspecGS = zeros(ne) # will contain lyapunov spectrum to be returned
+    delta = zeros(ht, ne) # matrix of the number of exponents (ne) to determine
+    # initializes CLVs to orthonormal set of vectors
+    for i=1:ne
+      delta[i, i] = 1;
+    end
+
+    # the number of total steps for the system is the number of samples (ns)
+    # times the number of steps per sample (nsps)
+    numsteps = ns*nsps
+    # warm up the lattice (x0) and perturbations (delta)
+    @showprogress "Delay Completed " for i in 1:delay
+        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        # timestep(lattice)
+    end
+    println("lattice warmed up, starting GSV evolution.")
+    # calculate Lyapunov Spectrum for the given number samples (ns) and
+    # given spacing (nsps)
+    @showprogress "Sample Calculations Completed " for i=1:ns
+        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        lypspecGS += log.(diag(r))/(ns*nsps)
+    end
+    # do not need R data for warming up C, since we are doing Gram-Schmidt Method
+    # finished evolution of lattice
+    println("the GSV Lyapunov Spectrum is:")
+    println(lypspecGS)
+    return lypspecGS
+end
+export lyapunovSpectrumGSMap
 #-----------------------------------------------------------------------------#
 # dynamical systems functions
 
@@ -782,6 +926,27 @@ function minimumManifoldAngle(C::Array{Float64, 2}, uInd, sInd)
     return theta
 end
 export minimumManifoldAngle
+
+function minimumManifoldAnglePreAlloc(C::Array{Float64, 3}, uInd, sInd)
+    # calculate minimum principal angle of specified subspaces in C
+    # initializes theta matrix to contain the mimimum angle
+    θ = zeros(size(C, 3))
+    ns = size(C, 3);
+    @showprogress "Manifold Angle " for t=1:ns
+        θ[t] = minimumManifoldAnglePreAlloc(C[:, :, t], uInd, sInd)
+    end
+    # return theta array containing minimum principal angle at each timestep
+    return θ
+end
+function minimumManifoldAnglePreAlloc(C::Array{Float64, 2}, uInd, sInd)
+    q1 = C[:, uInd]
+    q2 = C[:, sInd]
+    q1 = qr!(q1).Q; q2 = qr(q2).Q
+    q1 = q1[:, 1:length(uInd)]; q2 = q2[:, 1:length(sInd)]
+    theta = acos(round(svdvals(q2'q1)[1], digits=14));# minimum(acos.(round.(svdvals(q2'*q1), digits=14)));
+    return theta
+end
+export minimumManifoldAnglePreAlloc
 
 
 #-----------------------------------------------------------------------------#
