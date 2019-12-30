@@ -245,6 +245,24 @@ function lyapunovSpectrumCLVMap(datafile)
     return lypspec
 end
 
+function lyapunovSpectrumCLV(datafile)
+    h5open(datafile, "r") do fid
+        global lypspec
+        cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
+        dt = read(fid["dt"]);
+        ns =size(cH, 3); ne = size(cH, 1);
+        lypspec = zeros(ne);
+        C = zeros(ne, ne); R = zeros(ne, ne);
+        @showprogress "CLV Exponents " for i = 2:ns
+            C = reshape(cH[:, :, i-1], (ne, ne));
+            R = reshape(rH[:, :, i], (ne, ne));
+            lypspec += log.(clvInstantGrowth(C, R))
+        end
+    lypspec /= (ns*nsps*dt)
+    end
+    return lypspec
+end
+
 """
     clvInstantaneous(datafile::String, tS)
     reads datafile and calculates the instantaneous clv's for each timestep tS,
@@ -452,6 +470,105 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     close(fid)
 end
 
+function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+    fid = h5open(filename, "w");
+    # initialize local variables
+    ht = length(x0)
+    delayResets = Int(delay/nsim)
+    nsResets = Int(ns/nsim)
+    cdelayResets = Int(cdelay/nsim)
+    # create data handles for storing the data and allocate the necesary
+    cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
+    rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
+    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
+ #     jH = d_create(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
+ #                      "chunk", (ht, ht, nsrs))
+    yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns))
+    rwH = d_create(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+    cwH = d_create(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    λH = d_create(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
+    # store parameters of the run
+    fid["parameters"] = p;
+    fid["delay"] = delay;
+    fid["ns"] = ns;
+    fid["ne"] = ne;
+    fid["dt"] = δt;
+    fid["cdelay"] = cdelay;
+    fid["nsps"] = nsps;
+    fid["nsim"] = nsim;
+    # println("nsim is recorded as : ", nsim);
+    fid["ht"] = ht;
+    # construct set of perturbation vectors
+    delta = zeros(ht, ne)
+    for i=1:ne
+        delta[i, i] = 1;
+    end
+    # the number of total steps for the system is the number of samples (ns)
+    # * the number of steps per sample (nsps)
+    numsteps = ns*nsps
+    # warm up the lattice and Gram-Schmidt Vectors
+    λi = zeros(ne, nsim) # zeros(ne, delayResets)
+    @showprogress "Delay Completed " for i=1:delayResets
+        for j=1:nsim
+            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            λi[:, j] = log.(diag(r))/(nsps*δt)
+        end
+        λH[:, range((i-1)*nsim+1, length=nsim)] = λi
+    end
+    # println(delta)
+    println("lattice warmed up, starting GSV evolution.")
+    #= initialize  variables for evolution of delta and lattice, calculating Q
+    and lypspec at all times =#
+    J = Matrix(1.0I, ht, ht)
+    # evolve delta and lattice by numsteps in forward direction
+    yS = zeros(ht, nsim); # zeros(ht, ns);
+    vn = zeros(ht, nsim); # zeros(ht, ns);
+    RS = zeros(ne, ne, nsim); # zeros(ne, ne, ns);
+    QS = zeros(ht, ne, nsim); # zeros(ht, ne, ns);
+    lypspecGS = zeros(ne)
+    @showprogress "Sample Calculations Completed " for i=1:nsResets
+        for j=1:nsim
+            yS[:, j] = x0;
+            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            # vn[:, j] = v/norm(v);
+            RS[:, :, j] = r
+            QS[:, :, j] = delta
+            lypspecGS += log.(diag(r))/(ns*nsps*δt)
+        end
+        # assign values to dataset
+        trng = range((i-1)*nsim+1, length=nsim)
+        yH[:, trng] = yS;
+        # vn[:, trng] = vn;
+        rH[:, :, trng] = RS;
+        qH[:, :, trng] = QS;
+    end
+    println("collected QR data.")
+    # create R data for warming up C
+    Rw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
+    Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
+    @showprogress "Forward Warmup Completed " for i=1:cdelayResets
+        for j=1:nsim
+            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            RS[:, :, j] = r
+            Qw[:, :, j] = delta
+        end
+        # assign values to dataset
+        trng = range((i-1)*nsim+1, length=nsim)
+        rwH[:, :, trng] = RS;
+        # qH[:, :, trng] = Qw;
+    end
+    # finished forward evolution of lattice
+    # write lyapunov spectrum as calculated by the R components to file
+    println("the GSV Lyapunov Spectrum is:")
+    println(lypspecGS)
+    println("finished forward evolution of CLVs")
+    # save GS method lyapunov spectrum
+    fid["lypGS"] = lypspecGS;
+    # return results of forward component of Ginelli's method for CLV computation
+    # return yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst
+    close(fid)
+end
+
 function clvGinelliLongBackwards(datafile)
     # initialize items for backward evolution
     fid = h5open(datafile, "r+")
@@ -566,6 +683,19 @@ function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
     println(lypspecCLV)
 
     return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw
+end
+
+
+function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
+                                  cdelay, nsps, nsim::Int64, filename)
+    clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+    clvGinelliLongBackwards(filename)
+    lypspecCLV = lyapunovSpectrumCLV(filename) # , nsim)
+    h5open(filename, "r+") do fid
+        write(fid, "lypspecCLV", lypspecCLV)
+    end
+    println("CLV Lyapunov Spectrum: ")
+    println(lypspecCLV)
 end
 export covariantLyapunovVectors
 function advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
