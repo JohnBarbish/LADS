@@ -2,7 +2,7 @@ module LADS
 
 using Statistics, Random, LinearAlgebra
 import JLD: jldopen, read, close
-using HDF5, ProgressMeter
+using HDF5, ProgressMeter, FFTW
 # We make the follow definitions for notation
 # Maps  - descrete time
 # Flows - continuous time
@@ -1035,6 +1035,27 @@ function minimumManifoldAngle(datafile::String, uInd, sInd)
     return θ
 end
 
+function minimumManifoldAngle(datafile::String, uInd, sInd, nsim)
+    # calculate minimum principal angle of specified subspaces in C
+    # initializes theta matrix to contain the mimimum angle
+    fid = h5open(datafile, "r")
+    # rH = fid["r"];
+    cH = fid["c"];
+    ns = size(cH, 3);
+    ne = size(cH, 1);
+    nsResets = Int(ns/nsim);
+    θ = zeros(ns)
+    cTemp = zeros(ne, ne, nsim);
+    @showprogress "Manifold Angle " for t=1:nsResets
+        trng = range((t-1)*nsim+1, length=nsim)
+        cTemp = cH[:, :, trng];
+        θ[t] = minimumManifoldAngle(cTemp, uInd, sInd)
+    end
+    close(fid)
+    # return theta array containing minimum principal angle at each timestep
+    return θ
+end
+
 function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
     # calculate minimum principal angle of specified subspaces in C
     # initializes theta matrix to contain the mimimum angle
@@ -1048,39 +1069,92 @@ function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
 end
 
 function minimumManifoldAngle(C::Array{Float64, 2}, uInd, sInd)
-    u1 = C[:, uInd]
-    u2 = C[:, sInd]
-    q1, = qr(u1); q2, = qr(u2)
-    q1 = q1[:, 1:length(uInd)]; q2 = q2[:, 1:length(sInd)]
-    theta = acos(round(svdvals(q2'q1)[1], digits=14));# minimum(acos.(round.(svdvals(q2'*q1), digits=14)));
+    u1 = C[:, uInd]; u2 = C[:, sInd];
+    # use Array function to get correct size Q from QR decomposition quickly
+    q1 = Array(qr(u1).Q); q2 = Array(qr(u2).Q);
+    theta = acos(round(svdvals(q2'q1)[1], digits=14));
     return theta
 end
 export minimumManifoldAngle
 
-function minimumManifoldAnglePreAlloc(C::Array{Float64, 3}, uInd, sInd)
-    # calculate minimum principal angle of specified subspaces in C
-    # initializes theta matrix to contain the mimimum angle
-    θ = zeros(size(C, 3))
-    ns = size(C, 3);
-    @showprogress "Manifold Angle " for t=1:ns
-        θ[t] = minimumManifoldAnglePreAlloc(C[:, :, t], uInd, sInd)
-    end
-    # return theta array containing minimum principal angle at each timestep
-    return θ
-end
-function minimumManifoldAnglePreAlloc(C::Array{Float64, 2}, uInd, sInd)
-    q1 = C[:, uInd]
-    q2 = C[:, sInd]
-    q1 = qr!(q1).Q; q2 = qr(q2).Q
-    q1 = q1[:, 1:length(uInd)]; q2 = q2[:, 1:length(sInd)]
-    theta = acos(round(svdvals(q2'q1)[1], digits=14));# minimum(acos.(round.(svdvals(q2'*q1), digits=14)));
-    return theta
-end
-export minimumManifoldAnglePreAlloc
-
 
 #-----------------------------------------------------------------------------#
 # general purpose functions
+"""
+  powerSpectrum(s)
+  returns the wavenumber distribution along with the power spectrum for the input
+  signal array s.
+"""
+function powerSpectrum(s::Array{Float64, 1})
+   N = length(s);
+   psdx = abs2.(rfft(s));
+   psdx /= sum(abs2.(psdx));
+   krng = 0:Int(floor(N/2)); # using floor for odd cases
+   return krng, psdx
+end
+"""
+  powerSpectralDensity(s, Fs)
+  returns the wavenumber distribution along with the power spectrum for the input
+  signal array s. dims specifies the dimension(s) to perform the fft over.
+  For example, if the 1st dimension contains the spatial information for the CLV
+  specified by the 2nd dimension at the timestep specified by the 3rd, then
+  setting dims=1 finds the power spectrum for every CLV and timestep in the 2nd
+  and 3rd dimensions and returns it in the same format as the input.
+"""
+function powerSpectralDensity(s, Fs)
+   N = length(s);
+   # xdft = fft(s);
+   # xdft = xdft[1:Int(N/2)+1];
+   xdft = rfft(s);
+   psdx = (1/(Fs*N))*abs2.(xdft);
+   psdx[2:end-1] = 2*psdx[2:end-1];
+   freq = 0:Fs/N:Fs/2;
+   return freq, psdx
+end
+
+function powerSpectralDensity(s, Fs, dims)
+    psd(sig) = powerSpectralDensity(sig, Fs)
+    return mapslices(psd, s, dims=dims)
+end
+
+
+export powerSpectrum
+"""
+  averagePowerSpectrum(datafile, nsim, fftdim, timedim)
+"""
+function averagePowerSpectralDensity(datafile::String)
+    # calculate minimum principal angle of specified subspaces in C
+    # initializes theta matrix to contain the mimimum angle
+    h5open(datafile, "r") do fid
+        global krng, psdx
+        qH = fid["q"]; cH = fid["c"];
+        ht = size(qH, 1); ns = size(cH, 3); ne = size(cH, 1);
+        # nsResets = Int(ns/nsim);
+        # cTemp = zeros(ne, ne, nsim); qTemp = zeros(ht, ne, nsim);
+        qTemp = zeros(ht, ne); cTemp = zeros(ne, ne);
+        vTemp = zeros(ht, ne);
+        krng, w = powerSpectralDensity(vTemp, 1); # assumes dx=1
+        nk = length(krng);
+        psdx = zeros(nk, ht);
+        @showprogress "Power Spectrum " for t=1:ns # t=1:nsResets
+            qTemp = reshape(qH[:, :, t], (ht, ne));
+            cTemp = reshape(cH[:, :, t], (ne, ne));
+            vTemp = qTemp*cTemp;
+            krng, psdxTemp = powerSpectralDensity(vTemp, 1); # assumes dx=1
+            psdx += psdxTemp
+            # trng = range((t-1)*nsim+1, length=nsim)
+            # cTemp = cH[:, :, trng]; qTemp = qH[:, :, trng];
+            # for t in trng
+            #     vTemp = qTemp[:, :, t]*cTemp[:, :, t]
+            #     krng, psdxTemp = powerSpectrum(vTemp, 1)
+            #     psdx += psdxTemp
+            # end
+        end
+    end
+    psdx /= ns
+    return krng, psdx
+end
+export averagePowerSpectralDensity
 
 function cumulativeAverage(x::Array{Float64, 1})
     ht = length(x)
@@ -1261,7 +1335,7 @@ export allAngles
 
   Returns angle between all vectors in set, assuming normal vectors.
 """
-function allAngleDistribution(C::Array{Float64, 3},normalized=true, nbins=100, xlims=(0, pi))
+function allAngleDistribution(C::Array{Float64, 3},normalized::Bool, nbins::Int64, xlims::Tuple{Real, Real})
     data = zeros(size(C));
     ns = size(C, 3);
     for t = 1:ns
