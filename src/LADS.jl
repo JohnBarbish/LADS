@@ -1118,7 +1118,7 @@ function powerSpectralDensity(s, Fs, dims)
 end
 
 
-export powerSpectrum
+export powerSpectralDensity
 """
   averagePowerSpectrum(datafile, nsim, fftdim, timedim)
 """

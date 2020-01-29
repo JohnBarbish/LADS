@@ -199,28 +199,29 @@ sumu!(y, u)
 # Unit testing for powerSpectrum function
 # note that pi/h = N/2 where N is the number of points and h is the distance
 # between the points.
-k = 10; L = 25; N = 100; # h = 2*pi/N;
-mag = 2;
-# lambda = 12; k = 2*pi/lambda;
-dx = L/N;
-xrng = 0:dx:L-dx; # 0:2pi/N:2pi*(1-1/N);
-s = [mag*sin(k*x) for x in xrng]
-krng, psdx = newPowerSpectrum(s, dx, 1) # powerSpectrum
-tpsdx = zeros(Int(floor(N/2))+1); tpsdx[k+1] = mag;
-plot(xrng, s)
-plot(krng, psdx, reuse=false, label="calculated")
-plot!(krng, tpsdx, markershape=:auto, label="expected")
+# k = 10; L = 25; N = 100; # h = 2*pi/N;
+# mag = 2;
+# # lambda = 12; k = 2*pi/lambda;
+# dx = L/N;
+# xrng = 0:dx:L-dx; # 0:2pi/N:2pi*(1-1/N);
+# s = [mag*sin(k*x) for x in xrng]
+# krng, psdx = newPowerSpectrum(s, dx, 1) # powerSpectrum
+# tpsdx = zeros(Int(floor(N/2))+1); tpsdx[k+1] = mag;
+# plot(xrng, s)
+# plot(krng, psdx, reuse=false, label="calculated")
+# plot!(krng, tpsdx, markershape=:auto, label="expected")
 
 Fs = 1000; # 1 kHz
 fsample = 100; # 100 Hz signal
 t = 0:1/Fs:1-1/Fs; # time sampling
-tpsdx = zeros(Int(floor(N/2))+1); tpsdx[fsample+1] = 0.5;
-s = cos.(2*pi*fsample*t); # 100 Hz signal
+N = length(t);
+tpsdx = zeros(Int(floor(N/2))+1); tpsdx[Int(fsample*N/Fs+1)] = 0.5;
+s = sin.(2*pi*fsample*t); # 100 Hz signal
 freq, psdx = powerSpectralDensity(s, Fs);
 isapprox(psdx, tpsdx)
-# plot(t, s)
-# plot(freq, psdx, reuse=false, label="calculated")
-# plot!(freq, tpsdx, markershape=:auto, label="expected")
+plot(t, s)
+plot(freq, psdx, reuse=false, label="calculated")
+plot!(freq, tpsdx, markershape=:auto, label="expected")
 @test isapprox(psdx, tpsdx)
 @test length(psdx)==length(krng)
 # potential for developing higher dimension versions of code and testing
