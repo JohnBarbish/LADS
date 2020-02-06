@@ -211,19 +211,24 @@ sumu!(y, u)
 # plot(krng, psdx, reuse=false, label="calculated")
 # plot!(krng, tpsdx, markershape=:auto, label="expected")
 
-Fs = 1000; # 1 kHz
-fsample = 100; # 100 Hz signal
-t = 0:1/Fs:1-1/Fs; # time sampling
-N = length(t);
-tpsdx = zeros(Int(floor(N/2))+1); tpsdx[Int(fsample*N/Fs+1)] = 0.5;
-s = sin.(2*pi*fsample*t); # 100 Hz signal
-freq, psdx = powerSpectralDensity(s, Fs);
-isapprox(psdx, tpsdx)
-plot(t, s)
-plot(freq, psdx, reuse=false, label="calculated")
-plot!(freq, tpsdx, markershape=:auto, label="expected")
-@test isapprox(psdx, tpsdx)
-@test length(psdx)==length(krng)
+# Fs = 1000; # 1 kHz
+# fsample = 100; # 100 Hz signal
+# T = 100;
+# t = 0:1/Fs:T-1/Fs; # time sampling
+# N = length(t);
+# # tpsdx = zeros(Int(floor(N/2))+1); tpsdx[Int(fsample*N/Fs+1)] = 0.5*N/Fs;
+# s = sin.(2*pi*fsample*t); # 100 Hz signal
+# pxx = periodogram(s, fs=Fs)
+# plot(pxx.freq, pxx.power, label="DSP")
+# freq, psdx = powerSpectralDensity(s, Fs);
+# # plot!(freq, psdx, label="mine")
+# findmax(psdx)
+# isapprox(psdx, tpsdx)
+# # plot(t, s)
+# # plot(freq, psdx, reuse=false, label="calculated")
+# # plot!(freq, tpsdx, markershape=:auto, label="expected")
+# @test isapprox(psdx, tpsdx)
+# @test length(psdx)==length(krng)
 # potential for developing higher dimension versions of code and testing
 # s2 = cat(s, s, dims=2);
 # krng, psdx = powerSpectralDensity(s2, Fs, 1);

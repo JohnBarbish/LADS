@@ -1085,13 +1085,14 @@ export minimumManifoldAngle
   returns the wavenumber distribution along with the power spectrum for the input
   signal array s.
 """
-function powerSpectrum(s::Array{Float64, 1})
-   N = length(s);
-   psdx = abs2.(rfft(s));
-   psdx /= sum(abs2.(psdx));
+function powerSpectrum(s, dim)
+   N = size(s, dim);
+   psdx = abs2.(rfft(s, dim));
+   psdx ./= sum(abs2.(psdx), dims=dim);
    krng = 0:Int(floor(N/2)); # using floor for odd cases
    return krng, psdx
 end
+export powerSpectrum
 """
   powerSpectralDensity(s, Fs)
   returns the wavenumber distribution along with the power spectrum for the input
@@ -1122,7 +1123,7 @@ export powerSpectralDensity
 """
   averagePowerSpectrum(datafile, nsim, fftdim, timedim)
 """
-function averagePowerSpectralDensity(datafile::String)
+function averagePowerSpectrum(datafile::String)
     # calculate minimum principal angle of specified subspaces in C
     # initializes theta matrix to contain the mimimum angle
     h5open(datafile, "r") do fid
@@ -1133,14 +1134,14 @@ function averagePowerSpectralDensity(datafile::String)
         # cTemp = zeros(ne, ne, nsim); qTemp = zeros(ht, ne, nsim);
         qTemp = zeros(ht, ne); cTemp = zeros(ne, ne);
         vTemp = zeros(ht, ne);
-        krng, w = powerSpectralDensity(vTemp, 1); # assumes dx=1
+        krng, w = powerSpectrum(vTemp, 1); # assumes dx=1
         nk = length(krng);
         psdx = zeros(nk, ht);
         @showprogress "Power Spectrum " for t=1:ns # t=1:nsResets
             qTemp = reshape(qH[:, :, t], (ht, ne));
             cTemp = reshape(cH[:, :, t], (ne, ne));
             vTemp = qTemp*cTemp;
-            krng, psdxTemp = powerSpectralDensity(vTemp, 1); # assumes dx=1
+            krng, psdxTemp = powerSpectrum(vTemp, 1); # assumes dx=1
             psdx += psdxTemp
             # trng = range((t-1)*nsim+1, length=nsim)
             # cTemp = cH[:, :, trng]; qTemp = qH[:, :, trng];
@@ -1154,7 +1155,7 @@ function averagePowerSpectralDensity(datafile::String)
     psdx /= ns
     return krng, psdx
 end
-export averagePowerSpectralDensity
+export averagePowerSpectrum
 
 function cumulativeAverage(x::Array{Float64, 1})
     ht = length(x)
