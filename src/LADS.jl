@@ -1126,6 +1126,7 @@ export powerSpectralDensity
 function averagePowerSpectrum(datafile::String)
     # calculate minimum principal angle of specified subspaces in C
     # initializes theta matrix to contain the mimimum angle
+    global krng, psdx
     h5open(datafile, "r") do fid
         global krng, psdx
         qH = fid["q"]; cH = fid["c"];
@@ -1151,8 +1152,8 @@ function averagePowerSpectrum(datafile::String)
             #     psdx += psdxTemp
             # end
         end
+        psdx /= ns
     end
-    psdx /= ns
     return krng, psdx
 end
 export averagePowerSpectrum
