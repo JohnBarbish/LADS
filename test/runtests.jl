@@ -27,7 +27,7 @@ end
 # println(J-dfdx)
 # println(norm(J - dfdx))
 # println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < length(J)*magδx*10
+@test norm(J - dfdx) < size(J, 1)*magδx*10
 
 
 #------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ end
 # println(J-dfdx)
 # println(norm(J - dfdx))
 # println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < length(J)*magδx*10
+@test norm(J - dfdx) < size(J, 1)*magδx*10
 
 
 #------------------------------------------------------------------------------
@@ -73,7 +73,30 @@ end
 # println(J-dfdx)
 # println(norm(J - dfdx))
 # println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < length(J)*magδx*10
+@test norm(J - dfdx) < size(J, 1)*magδx*10
+
+
+#------------------------------------------------------------------------------
+# unit test for tentCMap and tentCJacobian functions
+# Set parameters and test point
+mu = 0.2; K = 1.3; C = 1.0; beta = 0.75; L = 128;
+p = [mu, K, C, beta];
+x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
+J = tentCJacobian(x0, p);
+f0 = tentCMap(x0, p);
+dfdx = zeros(L, L);
+magδx = 10^-8;
+for j = 1:L
+    δx = zeros(L); δx[j] = magδx;
+    dfdx[:, j] = ((tentCMap(x0+δx, p) - f0)/magδx)
+end
+
+# println(J)
+# println(dfdx)
+# println(J-dfdx)
+# println(norm(J - dfdx))
+# println(norm(J - dfdx) < length(J)*magδx*10)
+@test norm(J - dfdx) < size(J, 1)*magδx*10
 
 
 #------------------------------------------------------------------------------

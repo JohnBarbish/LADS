@@ -171,6 +171,56 @@ end
 export tentJacobian
 
 #-----------------------------------------------------------------------------#
+# functions for tent Map System with Conservation Law from mean-field-type
+# coupling
+# parameter definitions: p = (mu, K, C)
+function tentCMap(x, p)
+    L = length(x);
+    mu = p[1];
+    K = p[2];
+    y = zeros(L);
+    y[1] = tentf(x[1], mu) + K/2*(tentf(x[L], mu) - 2*tentf(x[1], mu) + tentf(x[2], mu))
+    for i=2:L-1
+        y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
+    end
+    y[L] = tentf(x[L], mu) + K/2*(tentf(x[L-1], mu) - 2*tentf(x[L], mu) + tentf(x[1], mu))
+    y = y + tentCg(x, p)*ones(L);
+    return y
+end
+export tentCMap
+# in development
+function tentCJacobian(y, p)
+    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
+    L = length(y) # number of rows
+    J = zeros(L, L);
+    # useful constants
+    a = K/2 - beta/L; c = -beta/L; d = 1 - K-beta/L;
+    for i=1:L
+        J[i, :] = c*tentdf.(y, mu);
+    end
+
+    # construct evolution matrix
+    for i in 2:L-1
+        J[i, i-1] = a*tentdf(y[i-1], mu)
+        J[i, i]   = d*tentdf(y[i], mu)
+        J[i, i+1] = a*tentdf(y[i+1], mu)
+    end
+    J[1, 1] = d*tentdf(y[1], mu)
+    J[1, L] = a*tentdf(y[L], mu)
+    J[1, 2] = a*tentdf(y[2], mu)
+    J[L, L] = d*tentdf(y[L], mu)
+    J[L, 1] = a*tentdf(y[1], mu)
+    J[L, L-1] = a*tentdf(y[L-1], mu)
+    return J
+end
+export tentCJacobian
+
+function tentCg(x, p)
+    N = length(x);
+    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
+    return beta/N*(C - sum(tentf.(x, mu)))
+end
+#-----------------------------------------------------------------------------#
 # functions useful for calculating CLVs for flows
 
 function advanceQRMap(map, jacobian, x0, delta, p, nsps)
@@ -296,18 +346,14 @@ function clvGinelliBackwards(QS, RS, Rw)
     # warm up C vectors with backward transient Rw matrices
     C = Matrix(1.0I, ne, ne)
     Cw[:, :, cdelay] = C;
-    for i = cdelay-1:-1:1
+    @showprogress "Warmup Completion " for i = cdelay-1:-1:1
         C = backwardsRC(C, Rw[:, :, i+1]);
         Cw[:, :, i] = C;
     end
-    println("finished warming up C. Size is: ", size(C))
     C = backwardsRC(Cw[:, :, 1], Rw[:, :, 1]);
     CS[:, :, end] = C;
     println("set IC for calculating V.")
-    for i = ns-1:-1:1
-        if Int(rem(i, ns/10)) == 0
-            println("percent completion: ", (ns-i)/ns*100);
-        end
+    @showprogress "Sample Completion " for i = ns-1:-1:1
         C = backwardsRC(C, RS[:, :, i+1]);
         CS[:, :, i] = C;
     end
@@ -329,7 +375,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     # warm up the lattice and Gram-Schmidt Vectors
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
-    for i=1:delay
+    @showprogress "Delay Completed " for i=1:delay
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps)
     end
@@ -344,7 +390,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     RS = zeros(ne, ne, ns);
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    for i=1:ns
+    @showprogress "Sample Calculations Completed " for i=1:ns
         yS[:, i] = x0;
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         vn[:, i] = v/norm(v);
@@ -356,7 +402,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     # create R data for warming up C
     Rw = zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, cdelay);
-    for i=1:cdelay
+    @showprogress "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         Rw[:, :, i] = r
@@ -646,9 +692,11 @@ function clvGinelliLongBackwards(datafile)
     # return CS, Cw
 end
 
-function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64, ns::Int64, ne::Int64,
-                                  cdelay::Int64, nsps::Int64, nsim::Int64, filename)
-    clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
+            ns::Int64, ne::Int64, cdelay::Int64, nsps::Int64, nsim::Int64,
+            filename)
+    clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
+                                nsim, filename)
     clvGinelliLongBackwards(filename)
     lypspecCLV = lyapunovSpectrumCLVMap(filename) # , nsim)
     h5open(filename, "r+") do fid
@@ -675,7 +723,8 @@ export covariantLyapunovVectorsMap
 
 function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
                                   cdelay, nsps)
-    yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst = clvGinelliForward(flow, jacobian, p, δt, x0,
+    yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst = clvGinelliForward(flow, jacobian,
+                                                                    p, δt, x0,
                                                   delay, ns, ne, cdelay, nsps)
     CS, Cw = clvGinelliBackwards(QS, RS, Rw)
     lypspecCLV = lyapunovSpectrumCLV(CS, RS, nsps, δt)
@@ -688,7 +737,8 @@ end
 
 function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
                                   cdelay, nsps, nsim::Int64, filename)
-    clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+    clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne,
+                            cdelay, nsps, nsim, filename)
     clvGinelliLongBackwards(filename)
     lypspecCLV = lyapunovSpectrumCLV(filename) # , nsim)
     h5open(filename, "r+") do fid
@@ -715,7 +765,7 @@ function advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
 
     return x0, v, delta, r
 end
-# function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
+
 function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps)
     # initialize local variables
     ht = length(x0)
@@ -730,7 +780,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     # warm up the lattice and Gram-Schmidt Vectors
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
-    for i=1:delay
+    @showprogress "Delay Completed " for i=1:delay
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps*δt)
     end
@@ -745,7 +795,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     RS = zeros(ne, ne, ns);
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    for i=1:ns
+    @showprogress "Sample Calculations Completed " for i=1:ns
         yS[:, i] = x0;
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         vn[:, i] = v/norm(v);
@@ -757,7 +807,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     # create R data for warming up C
     Rw = zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, cdelay);
-    for i=1:cdelay
+    @showprogress "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         Rw[:, :, i] = r
@@ -868,7 +918,8 @@ export kyd
   DOS(datafile::String, window::Int64)
 Determines the Domination of Osledet Splitting based on recorded C and R matrices.
 """
-function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type currently, need to fix
+function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
+    # HDF5 type currently, need to fix
     fid = h5open(datafile, "r")
     rH = fid["r"];
     cH = fid["c"];
@@ -938,7 +989,8 @@ function DOS(datafile::String, windows)
             else
                 # regular process
                 @showprogress "Window: $window " for i=1:ns-window
-                    # added for loop to go have the instantaneous CLV growth averaged over window
+                    # added for loop to go have the instantaneous CLV growth
+                    # averaged over window
                     CLV_growth = zeros(ne);
                     for j=0:window-1
                         CLV_growth += reshape(fid["growth"][:, i+j], ne);
@@ -959,7 +1011,8 @@ end
   DOS(RS, CS, window::Int64)
 Determines the Domination of Osledet Splitting based on recorded C and R matrices.
 """
-function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type currently, need to fix
+function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type
+    ## currently, need to fix
   # fid = h5open(datafile, "r")
   #   Rhandle = fid["R"];
   #   Chandle = fid["C"];
@@ -969,10 +1022,7 @@ function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type cu
   nutemp = zeros(ne, ne);
   CLV_growth = zeros(ne);
   # @assert(window < ns && window > 0) # checks that window is not too large
-  for i=1:ns-window
-    if Int(rem(i, ns/10)) == 0
-      println("percent completion: ", i/ns*100);
-    end
+  @showprogress "Calculating DOS " for i=1:ns-window
     # added for loop to go have the instantaneous CLV growth averaged over window
     CLV_growth = zeros(ne);
     for j=0:window-1
@@ -988,6 +1038,66 @@ function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type cu
   return nu
 end
 export DOS
+
+"""
+  DOS(datafile::String, windows)
+Determines the Domination of Osledet Splitting based on recorded C and R matrices.
+"""
+function DOS(RS, CS, windows)
+    ns = size(RS, 3);
+    ne = size(CS, 1);
+    nu = zeros(ne, ne);
+    nutemp = zeros(ne, ne);
+    CLV_growth = zeros(ne);
+    nuDict = Dict();
+    # @assert(window < ns && window > 0) # checks that window is not too large
+    mktemp() do path, io
+        fid = h5open(path, "w")
+        growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
+        @showprogress "Instant Growths " for i = 1:ns-1
+            C1 = CS[:, :, i]
+            R2 = RS[:, :, i+1]
+            fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
+        end
+        for window in windows
+            nu = zeros(ne, ne);
+            if window > 3
+                # new process, saves computation for larger window sizes
+                clvGrowth = zeros(ne);
+                for j=1:window
+                   clvGrowth += reshape(fid["growth"][:, j], ne);
+                end
+                clvGrowth /= window
+                nutemp = dosViolations(clvGrowth)
+                @showprogress "Window: $window " for i = 2:ns-window
+                   clvGrowth -= reshape(fid["growth"][:, i-1], ne)/window;
+                   clvGrowth += reshape(fid["growth"][:, i+window-1], ne)/window;
+                   nutemp += dosViolations(clvGrowth);
+                end
+                nu = nutemp/(ns-window);
+                nuDict[window] = nu;
+            else
+                # regular process
+                @showprogress "Window: $window " for i=1:ns-window
+                    # added for loop to go have the instantaneous CLV growth
+                    # averaged over window
+                    CLV_growth = zeros(ne);
+                    for j=0:window-1
+                        CLV_growth += reshape(fid["growth"][:, i+j], ne);
+                    end
+                    CLV_growth /= window;
+                    nutemp = dosViolations(CLV_growth)
+                    nu += nutemp;
+                end
+                nu /= (ns-window)
+                nuDict[window] = nu;
+            end
+
+        end
+    end
+    return nuDict
+end
+
 
 """
   dosViolations(CLV_growth::Array{Float64, 1})
@@ -1221,7 +1331,8 @@ end
   pdf(data::Array{Float64, 1}, nbins::Int, xlims::Tuple)
   returns a pdf version of the input data.  a primitive version of a histogram.
 """
-function pdf(data::Array{Float64, 1}, theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
+function pdf(data::Array{Float64, 1},
+    theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
     mn, mx, nbins = theta[1], theta[end], length(theta)
     xlims = (mn, mx)
     a, dist = pdf(data, nbins, xlims)
@@ -1337,7 +1448,8 @@ export allAngles
 
   Returns angle between all vectors in set, assuming normal vectors.
 """
-function allAngleDistribution(C::Array{Float64, 3},normalized::Bool, nbins::Int64, xlims::Tuple{Real, Real})
+function allAngleDistribution(C::Array{Float64, 3},normalized::Bool,
+     nbins::Int64, xlims::Tuple{Real, Real})
     data = zeros(size(C));
     ns = size(C, 3);
     for t = 1:ns
@@ -1355,13 +1467,14 @@ function allAngleDistribution(C::Array{Float64, 3},normalized::Bool, nbins::Int6
     return dist
 end
 """
-  allAngleDistribution(C::Array{Float64, 3}, theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
+  allAngleDistribution(C::Array{Float64, 3},
+  theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
 
   Returns angle between all vectors in set, assuming normal vectors.
 """
 function allAngleDistribution(C::Array{Float64, 3},
-            normalized=true,
-            theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
+normalized=true,
+theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
     data = zeros(size(C));
     ns = size(C, 3);
     nbins = length(theta);
@@ -1380,12 +1493,13 @@ function allAngleDistribution(C::Array{Float64, 3},
     return dist
 end
 """
-  allAngleDistribution(datafile::String, theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
+  allAngleDistribution(datafile::String,
+  theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
 
   Returns angle between all vectors in set, assuming normal vectors.
 """
 function allAngleDistribution(datafile::String, normalized, nsim::Int64,
-            theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
+theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
     fid = h5open(datafile, "r");
     cH = fid["c"];
     ne = size(cH, 1); ns = size(cH, 3);
