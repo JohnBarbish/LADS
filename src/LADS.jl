@@ -270,7 +270,7 @@ function lyapunovSpectrumCLV(CS, RS, nsps, δt)
     for i = 2:ns
         lypspec += log.(clvInstantGrowth(CS[:, :, i-1], RS[:, :, i]))
     end
-    lypspec /= (ns*nsps*δt)
+    lypspec /= ((ns-1)*nsps*δt); # don't use 1st timestep in calculation
     return lypspec
 end
 
@@ -290,7 +290,7 @@ function lyapunovSpectrumCLVMap(datafile)
             R = reshape(rH[:, :, i], (ne, ne));
             lypspec += log.(clvInstantGrowth(C, R))
         end
-    lypspec /= (ns*nsps)
+    lypspec /= ((ns-1)*nsps)
     end
     return lypspec
 end

@@ -151,7 +151,69 @@ xc, yc = remove_zero_datapoints(x, y)
 
 #------------------------------------------------------------------------------
 # Unit testing for CLV function
+@testset "CLV function" begin
+# test for CLV function in the simplest case where jacobian is a constant and
+# the eigenvectors form identity matrix and the lyapunov exponents are just the
+# logarithm of the eigenvalues.
+    function simpleMap(x, p)
+        (p1, c1, p2, c2, p3, c3) = p;
+        return [p1*x[1] + c1,
+                p2*x[2] + c2,
+                p3*x[3] + c3];
 
+    end
+
+    function simpleJacobian(xvec, p)
+        (p1, c1, p2, c2, p3, c3) = p;
+        J = [[p1    0   0];
+             [0     p2  0];
+             [0     0   p3]]
+        return J
+    end
+
+    # setting initial conditions to one of the four chaotic bands
+    p1, p2, p3 = 3, 2, 0.5;
+    p = [p1 0 p2 0 p3 0]; # (p1, c1, p2, c2, p3, c3)
+    ne = 3; x0 = ones(3);
+    nsps = 1;
+    tConverge = 10; # number of time units to look for convergence of QR values
+    delay = Int(tConverge/(nsps));
+    cdelay = Int(tConverge/(nsps));
+    tSample = 10; # 500000
+    ns = Int(tSample/(nsps));
+    ht = length(x0);
+    ##------------------------------------------------------------------------------
+    ##Code for testing long time function
+    (yS, QS, RS, CS, lypspecGS,
+    lypspecCLV, Qw, Cw, lambdaInst, Rw) = covariantLyapunovVectorsMap(simpleMap,
+                            simpleJacobian, p, x0, delay, ns, ne, cdelay, nsps)
+
+    # sanity check: lyapunov spectrum
+    @test isapprox(log.(diag(RS[:, :, 1])), lypspecGS);
+    @test isapprox(log.([p1, p2, p3]), lypspecGS);
+    @test isapprox(lypspecCLV, lypspecGS);
+    # check all Q's are eigenvectors (identity matrix)
+    goodQS = true; goodRS = true; goodCS = true; goodlambdaInst = true;
+    for t=1:ns
+        if !isapprox(QS[:, :, t], Matrix(1.0I, ne, ne))
+            goodQS = false
+        end
+        if !isapprox(CS[:, :, t], Matrix(1.0I, ne, ne))
+            goodCS = false
+        end
+        if !isapprox(diag(RS[:, :, t]), [p1, p2, p3])
+            goodRS = false
+        end
+        if !isapprox(lambdaInst[:, t], lypspecGS)
+            goodlambdaInst = false
+        end
+    end
+    @test goodQS; @test goodRS; @test goodCS; @test goodlambdaInst;
+end
+
+
+#------------------------------------------------------------------------------
+# Comparison of CLV function in memory and out of memory
 # flow = linearFlow; jacobian = linearJacobian;
 # sigma = 10; rho = 28; beta = 8/3;
 K = 0.65; mu = 1.1; L = 256; seed!(1);
