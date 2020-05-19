@@ -68,7 +68,8 @@ end
 export lorenzJacobian
 
 #-----------------------------------------------------------------------------#
-# functions for model A System
+# functions for model A System with Broken Conservation Law
+# taken from Grigoriev and Cross 1997.
 
 function modelAMap(y, p)
   # general timestep function for 1D lattice with periodic B.C.
@@ -76,12 +77,12 @@ function modelAMap(y, p)
   x = zeros(h) # copy(y)
   # timestep middle of lattice
   for i = 2:h-1
-    x[i] = y[i] + af(y[i-1], p) + af(y[i+1], p) - 2*af(y[i], p)
+    x[i] = y[i] + ag(y[i], p) + af(y[i-1], p) + af(y[i+1], p) - 2*af(y[i], p)
   end
   # timestep first site
-  x[1] = y[1] + af(y[h], p) + af(y[2], p) - 2*af(y[1], p)
+  x[1] = y[1] + ag(y[1], p) + af(y[h], p) + af(y[2], p) - 2*af(y[1], p)
   # timestep last site
-  x[h] = y[h] + af(y[h-1], p) + af(y[1], p) - 2*af(y[h], p)
+  x[h] = y[h] + ag(y[h], p) + af(y[h-1], p) + af(y[1], p) - 2*af(y[h], p)
   return x
 end
 export modelAMap
@@ -93,13 +94,13 @@ function modelAJacobian(x, p)
   J = zeros(h, h);
   for i in 2:h-1
     J[i, i-1] = afprime(x[i-1], p)
-    J[i, i] = 1 - 2*afprime(x[i], p)
+    J[i, i] = 1 + agprime(x[i], p) - 2*afprime(x[i], p)
     J[i, i+1] = afprime(x[i+1], p)
   end
-  J[1, 1] = 1 - 2*afprime(x[1], p)
+  J[1, 1] = 1 + agprime(x[1], p) - 2*afprime(x[1], p)
   J[1, h] = afprime(x[h], p)
   J[1, 2] = afprime(x[2], p)
-  J[h, h] = 1 - 2*afprime(x[h], p)
+  J[h, h] = 1 + agprime(x[h], p) - 2*afprime(x[h], p)
   J[h, 1] = afprime(x[1], p)
   J[h, h-1] = afprime(x[h-1], p)
   return J
@@ -120,7 +121,13 @@ function afprime(x, p)::Float64
   return p[1] + p[2]*(1 - 2*mod(x,1))
 end
 
+function ag(x, p)::Float64
+    return p[3]*(p[4] - x)^3
+end
 
+function agprime(x, p)::Float64
+    return -3*p[3]*(p[4] - x)^2
+end
 #-----------------------------------------------------------------------------#
 # functions for tent Map System from Takeuchi
 
@@ -1154,12 +1161,12 @@ function minimumManifoldAngle(datafile::String, uInd, sInd, nsim)
     ns = size(cH, 3);
     ne = size(cH, 1);
     nsResets = Int(ns/nsim);
-    θ = zeros(ns)
+    θ = zeros(ns);
     cTemp = zeros(ne, ne, nsim);
     @showprogress "Manifold Angle " for t=1:nsResets
         trng = range((t-1)*nsim+1, length=nsim)
         cTemp = cH[:, :, trng];
-        θ[t] = minimumManifoldAngle(cTemp, uInd, sInd)
+        θ[trng] = minimumManifoldAngle(cTemp, uInd, sInd)
     end
     close(fid)
     # return theta array containing minimum principal angle at each timestep
@@ -1171,7 +1178,7 @@ function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
     # initializes theta matrix to contain the mimimum angle
     θ = zeros(size(C, 3))
     ns = size(C, 3)
-    @showprogress "Manifold Angle " for t=1:ns
+    for t=1:ns
         θ[t] = minimumManifoldAngle(C[:, :, t], uInd, sInd)
     end
     # return theta array containing minimum principal angle at each timestep
@@ -1323,8 +1330,8 @@ function pdf(data::Array{Float64, 1}, nbins::Int, xlims)
         end
     end
     # renormalize distribution so integral is one
-    dist /= (length(data)*boxWidth)
-    # @assert abs(sum(dist)*boxWidth - 1) < 10^-10
+    dist /= length(data)
+    # @assert abs(sum(dist) - 1) < 10^-10
     return boxes, dist
 end
 """

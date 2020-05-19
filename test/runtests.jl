@@ -33,9 +33,10 @@ end
 #------------------------------------------------------------------------------
 # unit test for modelAMap and modelAJacobian functions
 # Set parameters and test point
-a = 0.4; b = 1.3; L = 128;
-p = [a, b];
+a = 0.4; b = 1.3; L = 128; eps = 0.02;
 x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
+u0 = sum(x0)/L;
+p = [a, b, eps, u0];
 J = modelAJacobian(x0, p);
 f0 = modelAMap(x0, p);
 dfdx = zeros(L, L);
@@ -333,7 +334,10 @@ sumu!(y, u)
 
 #------------------------------------------------------------------------------
 # Unit testing for pdf function
-
+xlims = (0, 2);
+data = rand(10000); nbins = 250; data = data.*(xlims[2]-xlims[1]) .+ xlims[1];
+boxes, dist = pdf(data, nbins, xlims);
+@test isapprox(sum(dist), 1.0)
 
 #------------------------------------------------------------------------------
 # Unit testing for isturbulent function
