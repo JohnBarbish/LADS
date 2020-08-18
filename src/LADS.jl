@@ -663,7 +663,7 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     close(fid)
 end
 
-function clvGinelliLongBackwards(datafile)
+function clvGinelliLongBackwards(datafile, keepCLVWarmup)
     # initialize items for backward evolution
     fid = h5open(datafile, "r+")
     nsim = read(fid["nsim"]);
@@ -734,6 +734,12 @@ function clvGinelliLongBackwards(datafile)
         # assign values to dataset
         cH[:, :, trng] = Cw;
     end
+    # implementing lazy delete, could revise data storage to more efficiently
+    # overwrite variables instead of creating new ones
+    if !keepCLVWarmup
+        o_delete(fid, "rw")
+        o_delete(fid, "cw")
+    end
     # close file
     close(fid)
     # return results of backward component of Ginelli's method for CLV computation
@@ -742,10 +748,10 @@ end
 
 function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
             ns::Int64, ne::Int64, cdelay::Int64, nsps::Int64, nsim::Int64,
-            filename)
+            filename, keepCLVWarmup=false)
     clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
                                 nsim, filename)
-    clvGinelliLongBackwards(filename)
+    clvGinelliLongBackwards(filename, keepCLVWarmup)
     lypspecCLV = lyapunovSpectrumCLVMap(filename) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
@@ -784,10 +790,10 @@ end
 
 
 function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
-                                  cdelay, nsps, nsim::Int64, filename)
+                                  cdelay, nsps, nsim::Int64, filename, keepCLVWarmup=false)
     clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne,
                             cdelay, nsps, nsim, filename)
-    clvGinelliLongBackwards(filename)
+    clvGinelliLongBackwards(filename, keepCLVWarmup)
     lypspecCLV = lyapunovSpectrumCLV(filename) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
