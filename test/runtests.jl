@@ -99,6 +99,29 @@ end
 # println(norm(J - dfdx) < length(J)*magδx*10)
 @test norm(J - dfdx) < size(J, 1)*magδx*10
 
+#------------------------------------------------------------------------------
+# unit test for tentMapRBC and tentJacobianRBC functions
+# Set parameters and test point
+mu = 0.2; K = 1.3; C = 1.0; L = 128; beta = 1.0;
+x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
+C = sum(x0);
+p = [mu, K, C, beta];
+J = tentCJacobianRBC(x0, p);
+f0 = tentCMapRBC(x0, p);
+dfdx = zeros(L, L);
+magδx = 10^-8;
+for j = 1:L-2
+    δx = zeros(L); δx[j] = magδx;
+    dfdx[:, j] = ((tentCMapRBC(x0+δx, p) - f0)/magδx)
+end
+
+# println(J)
+# println(dfdx)
+# println(J-dfdx)
+# println(norm(J - dfdx))
+# println(norm(J - dfdx) < length(J)*magδx*10)
+@test norm(J - dfdx) < size(J, 1)*magδx*10
+
 
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function

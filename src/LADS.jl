@@ -178,6 +178,47 @@ end
 export tentJacobian
 
 #-----------------------------------------------------------------------------#
+# functions for tent Map System from Takeuchi with Rigid Boundary Conditions
+
+function tentCMapRBC(x, p)
+    L = length(x);
+    mu = p[1];
+    K = p[2];
+    y = zeros(L);
+    y[1] = tentf(x[1], mu) + K/2*(tentf(x[L], mu) - 2*tentf(x[1], mu) + tentf(x[2], mu))
+    for i=2:L-2
+        y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
+    end
+    y[1:L-2] = y[1:L-2] + tentCg(x[1:L-2], p)*ones(L-2);
+    y[L-1] = x[L-1]
+    y[L] = x[L]
+    return y
+end
+export tentCMapRBC
+# in development
+function tentCJacobianRBC(y, p)
+    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
+    L = length(y) # number of rows
+    J = zeros(L, L);
+    # useful constants
+    a = K/2 - beta/L; c = -beta/L; d = 1 - K-beta/L;
+    for i=1:L-2
+        J[i, 1:L-2] = c*tentdf.(y[1:L-2], mu);
+    end
+    # construct evolution matrix
+    for i in 2:L-3
+        J[i, i-1] = a*tentdf(y[i-1], mu)
+        J[i, i]   = d*tentdf(y[i], mu)
+        J[i, i+1] = a*tentdf(y[i+1], mu)
+    end
+    J[1, 1] = d*tentdf(y[1], mu)
+    J[1, 2] = a*tentdf(y[2], mu)
+    J[L-2, L-2] = d*tentdf(y[L-2], mu)
+    J[L-2, L-3] = a*tentdf(y[L-3], mu)
+    return J
+end
+export tentCJacobianRBC
+#-----------------------------------------------------------------------------#
 # functions for tent Map System with Conservation Law from mean-field-type
 # coupling
 # parameter definitions: p = (mu, K, C)
@@ -1548,5 +1589,36 @@ function localization(v, normalized=true)
 end
 
 export localization
+
+function averageLocalization(datafile::String, storefile::String, nsim)
+    # nsim = 10000;
+    fid = h5open(datafile, "r");
+    cH = fid["c"];
+    qH = fid["q"];
+    ht = size(qH, 1); ne = size(cH, 1); ns = size(cH, 3);
+    locCLV = zeros(ne);
+    Ci = zeros(ne, ne); Qi = zeros(ht, ne); VS = zeros(ht, ne);
+    CS = zeros(ne, ne, nsim); QS = zeros(ht, ne, nsim);
+    nsResets = Int(ns/nsim);
+    @showprogress "Calculating Localization " for t1 = 1:nsResets
+        trng = range((t1-1)*nsim+1, length=nsim);
+        CS = cH[:, :, trng]; QS = qH[:, :, trng];
+        for t = 1:nsim
+            Ci = reshape(CS[:, :, t], (ne, ne));
+            Qi = reshape(QS[:, :, t], (ht, ne));
+            VS = Qi*Ci;
+            for i=1:ne
+                locCLV[i] += LADS.localization(VS[:, i], true)
+            end
+        end
+    end
+    locCLV = locCLV/ns;
+    close(fid)
+    h5open(storefile, "w+") do file
+        write(file, "locCLV", locCLV)
+    end
+    return locCLV
+end
+
 
 end # module
