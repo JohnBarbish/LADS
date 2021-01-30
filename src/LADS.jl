@@ -574,7 +574,7 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     # create data handles for storing the data and allocate the necesary
     cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
     rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
-    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
+    qH = d_create(fid, "q",datatype(Float64), dataspace(ht, ne, ns))
  #     jH = d_create(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
     yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns))
@@ -900,7 +900,7 @@ Returns the Lyapunov Spectrum using the Gram-Schmidt Method for computing the
 exponents.
 
 """
-function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps)
+function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saverunavg=false)
     # initialize local variables
     ht = length(x0)
     lattice = copy(x0)
@@ -922,14 +922,26 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps)
     println("lattice warmed up, starting GSV evolution.")
     # calculate Lyapunov Spectrum for the given number samples (ns) and
     # given spacing (nsps)
-    @showprogress "Sample Calculations Completed " for i=1:ns
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
-        lypspecGS += log.(diag(r))/(ns*nsps)
+    if saverunavg
+        lypspecGS = zeros(ne, ns)
+        lsGSravg = zeros(ne)
+        @showprogress "Sample Calculations Completed " for i=1:ns
+        # for i=1:ns
+            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            lsGSravg += log.(diag(r))
+            lypspecGS[:, i] = lsGSravg/(i*nsps)
+        end
+        println("the GSV Lyapunov Spectrum is:")
+        println(lypspecGS[:, end])
+    else
+        @showprogress "Sample Calculations Completed " for i=1:ns
+            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            lypspecGS += log.(diag(r))/(ns*nsps)
+        end
+        println("the GSV Lyapunov Spectrum is:")
+        println(lypspecGS)
     end
-    # do not need R data for warming up C, since we are doing Gram-Schmidt Method
     # finished evolution of lattice
-    println("the GSV Lyapunov Spectrum is:")
-    println(lypspecGS)
     return lypspecGS
 end
 export lyapunovSpectrumGSMap
@@ -1241,6 +1253,17 @@ function minimumManifoldAngle(C::Array{Float64, 2}, uInd, sInd)
 end
 export minimumManifoldAngle
 
+function minimumManifoldAngleRange(V)
+    ne = size(V, 2);
+    Q1 = Array(qr(V).Q); Q2 = Array(qr(reverse(V, dims=2)).Q);
+    angles = zeros(ne);
+    angles[1] = acos(round(svdvals(reshape(Q1[:, 1]'Q2[:, 1:ne-1], (:, 1)))[1], digits=14));
+    angles[ne] = acos(round(svdvals(reshape(Q1[:, 1:ne-1]'Q2[:, 1], (:, 1)))[1], digits=14));
+    for i=2:ne-1
+        angles[i] = acos(round(svdvals(Q1[:, 1:i]'Q2[:, 1:ne-i])[1], digits=14));
+    end
+    return angles
+end
 
 #-----------------------------------------------------------------------------#
 # general purpose functions
@@ -1578,6 +1601,80 @@ end
 
 export allAngleDistribution
 
+# functions for calculating multiple manifold angles simultaneously
+function multiMinimumManifoldAngle(V, rng)
+    ne = size(V, 2);
+    Q1 = Array(qr(V).Q); Q2 = Array(qr(reverse(V, dims=2)).Q);
+    angles = zeros(length(rng));
+    # angles = zeros(ne);
+    # angles[1] = acos(round(svdvals(reshape(Q1[:, 1]'Q2[:, 1:ne-1], (:, 1)))[1], digits=14));
+    # angles[ne] = acos(round(svdvals(reshape(Q1[:, 1:ne-1]'Q2[:, 1], (:, 1)))[1], digits=14));
+    for (ind, i) in enumerate(rng) # 2:ne-1
+        angles[ind] = acos(round(svdvals(Q1[:, 1:i]'Q2[:, 1:ne-i])[1], digits=14));
+    end
+    return angles
+end
+
+# small difference between the two methods, with the first slightly faster.
+# Let's check how it works when dealing with the large datasets
+function multiMinimumManifoldAngle(datafile::String, rng)
+    # calculate minimum principal angle of specified subspaces in C
+    # initializes theta matrix to contain the mimimum angle
+    fid = h5open(datafile, "r")
+    # rH = fid["r"];
+    cH = fid["c"];
+    ns = size(cH, 3);
+    ne = size(cH, 1);
+    ntheta = length(rng);
+    θ = zeros(ntheta, ns)
+    cTemp = zeros(ne, ne);
+    @showprogress "Manifold Angle " for t=1:ns
+    # for t=1:ns
+        cTemp = reshape(cH[:, :, t], (ne, ne));
+        θ[:, t] = multiMinimumManifoldAngle(cTemp, rng)
+    end
+    close(fid)
+    # return theta array containing minimum principal angle at each timestep
+    return θ
+end
+
+export multiMinimumManifoldAngle
+"""
+    clvfromQR(datafile, storefile)
+
+    Calculates the CLVs from Q & R in datafile and stores CLVs ining in another file
+"""
+function clvfromQR(datafile, storefile)
+    # open up read file for data
+    h5open(datafile, "r") do fid
+        cH = fid["c"]; qH = fid["q"];
+        ht = size(qH, 1);
+        ns = size(cH, 3);
+        ne = size(cH, 1);
+        # open write file for clv data
+        fidw = h5open(storefile, "w")
+        vH = d_create(fidw, "v",datatype(Float64), dataspace(ht, ne, ns));
+        clv_loc = zeros(ne);
+        @showprogress "Calculating CLVs" 10 for i = 1:ns
+            Ci = cH[:, :, i];
+            Qi = qH[:, :, i];
+            Ci = reshape(Ci, (ne, ne));
+            Qi = reshape(Qi, (ht, ne));
+            # calculate and store clv at each timestep
+            Vi = Qi*Ci;
+            vH[:, :, i] = Vi;
+            # running total of localization
+            clv_loc += [localization(Vi[i, :]) for i in 1:ne];
+        end
+        # average CLV localization and stored
+        clv_loc /= ns;
+        fidw["clv_localization"] = clv_loc;
+        close(fidw);
+    end
+end
+
+export clvfromQR
+
 """
     localization(v, normalized=true)
 
@@ -1620,7 +1717,7 @@ function averageLocalization(datafile::String, storefile::String, nsim)
     end
     locCLV = locCLV/ns;
     close(fid)
-    h5open(storefile, "w+") do file
+    h5open(storefile, "cw") do file
         write(file, "locCLV", locCLV)
     end
     return locCLV
