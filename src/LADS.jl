@@ -43,231 +43,7 @@ function fd1(v, x, p, h, n)
 end
 # export fd1
 
-#-----------------------------------------------------------------------------#
-# functions for Lorenz System
 
-function lorenzFlow(x, p)
-    sigma = p[1];
-    rho = p[2];
-    beta = p[3];
-    return [sigma*(x[2]-x[1]),              # the Lorenz system
-          rho*x[1]-x[2]-x[1].*x[3],
-          x[1].*x[2]-beta*x[3]];
-
-end
-export lorenzFlow
-
-function lorenzJacobian(xvec, p)
-    sigma = p[1]; rho = p[2]; beta = p[3];
-    x = xvec[1]; y = xvec[2]; z = xvec[3];
-    J = [[-sigma sigma 0];
-         [(rho - z) -1 -x];
-         [y x -beta]]
-    return J
-end
-export lorenzJacobian
-
-#-----------------------------------------------------------------------------#
-# functions for model A System with Broken Conservation Law
-# taken from Grigoriev and Cross 1997.
-
-function modelAMap(y, p)
-  # general timestep function for 1D lattice with periodic B.C.
-  h = size(y, 1) # number of rows
-  x = zeros(h) # copy(y)
-  # timestep middle of lattice
-  for i = 2:h-1
-    x[i] = y[i] + ag(y[i], p) + af(y[i-1], p) + af(y[i+1], p) - 2*af(y[i], p)
-  end
-  # timestep first site
-  x[1] = y[1] + ag(y[1], p) + af(y[h], p) + af(y[2], p) - 2*af(y[1], p)
-  # timestep last site
-  x[h] = y[h] + ag(y[h], p) + af(y[h-1], p) + af(y[1], p) - 2*af(y[h], p)
-  return x
-end
-export modelAMap
-
-function modelAJacobian(x, p)
-  # calculates Jacobian at point x
-  h = size(x, 1) # number of rows
-  # construct Jacobian
-  J = zeros(h, h);
-  for i in 2:h-1
-    J[i, i-1] = afprime(x[i-1], p)
-    J[i, i] = 1 + agprime(x[i], p) - 2*afprime(x[i], p)
-    J[i, i+1] = afprime(x[i+1], p)
-  end
-  J[1, 1] = 1 + agprime(x[1], p) - 2*afprime(x[1], p)
-  J[1, h] = afprime(x[h], p)
-  J[1, 2] = afprime(x[2], p)
-  J[h, h] = 1 + agprime(x[h], p) - 2*afprime(x[h], p)
-  J[h, 1] = afprime(x[1], p)
-  J[h, h-1] = afprime(x[h-1], p)
-  return J
-end
-export modelAJacobian
-
-function af(xi, p)::Float64
-  z = mod(xi, 1)
-  return p[1]*xi + p[2]*z*(1-z)
-end
-"""
-  afprime(x)
-
-v07
-  function description
-"""
-function afprime(x, p)::Float64
-  return p[1] + p[2]*(1 - 2*mod(x,1))
-end
-
-function ag(x, p)::Float64
-    return p[3]*(p[4] - x)^3
-end
-
-function agprime(x, p)::Float64
-    return -3*p[3]*(p[4] - x)^2
-end
-#-----------------------------------------------------------------------------#
-# functions for tent Map System from Takeuchi
-
-function tentMap(x, p)
-    L = length(x);
-    mu = p[1];
-    K = p[2];
-    y = zeros(L);
-    y[1] = tentf(x[1], mu) + K/2*(tentf(x[L], mu) - 2*tentf(x[1], mu) + tentf(x[2], mu))
-    for i=2:L-1
-        y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
-    end
-    y[L] = tentf(x[L], mu) + K/2*(tentf(x[L-1], mu) - 2*tentf(x[L], mu) + tentf(x[1], mu))
-    return y
-end
-export tentMap
-
-function tentf(x, mu)
-    return 1 - mu*abs(x);
-end
-
-function tentdf(x, mu);
-    if x < 0
-        return mu
-    else
-        return -mu
-    end
-end
-
-function tentJacobian(y, p)
-    mu = p[1]; K = p[2];
-    L = length(y) # number of rows
-    J = zeros(L, L);
-    # construct evolution matrix
-    for i in 2:L-1
-        J[i, i-1] = K/2*tentdf(y[i-1], mu)
-        J[i, i] = (1 - K)*tentdf(y[i], mu)
-        J[i, i+1] = K/2*tentdf(y[i+1], mu)
-    end
-    J[1, 1] = (1 - K)*tentdf(y[1], mu)
-    J[1, L] = K/2*tentdf(y[L], mu)
-    J[1, 2] = K/2*tentdf(y[2], mu)
-    J[L, L] = (1 - K)*tentdf(y[L], mu)
-    J[L, 1] = K/2*tentdf(y[1], mu)
-    J[L, L-1] = K/2*tentdf(y[L-1], mu)
-    return J
-end
-export tentJacobian
-
-#-----------------------------------------------------------------------------#
-# functions for tent Map System from Takeuchi with Rigid Boundary Conditions
-
-function tentCMapRBC(x, p)
-    L = length(x);
-    mu = p[1];
-    K = p[2];
-    y = zeros(L);
-    y[1] = tentf(x[1], mu) + K/2*(tentf(x[L], mu) - 2*tentf(x[1], mu) + tentf(x[2], mu))
-    for i=2:L-2
-        y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
-    end
-    y[1:L-2] = y[1:L-2] + tentCg(x[1:L-2], p)*ones(L-2);
-    y[L-1] = x[L-1]
-    y[L] = x[L]
-    return y
-end
-export tentCMapRBC
-# in development
-function tentCJacobianRBC(y, p)
-    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
-    L = length(y) # number of rows
-    J = zeros(L, L);
-    # useful constants
-    a = K/2 - beta/L; c = -beta/L; d = 1 - K-beta/L;
-    for i=1:L-2
-        J[i, 1:L-2] = c*tentdf.(y[1:L-2], mu);
-    end
-    # construct evolution matrix
-    for i in 2:L-3
-        J[i, i-1] = a*tentdf(y[i-1], mu)
-        J[i, i]   = d*tentdf(y[i], mu)
-        J[i, i+1] = a*tentdf(y[i+1], mu)
-    end
-    J[1, 1] = d*tentdf(y[1], mu)
-    J[1, 2] = a*tentdf(y[2], mu)
-    J[L-2, L-2] = d*tentdf(y[L-2], mu)
-    J[L-2, L-3] = a*tentdf(y[L-3], mu)
-    return J
-end
-export tentCJacobianRBC
-#-----------------------------------------------------------------------------#
-# functions for tent Map System with Conservation Law from mean-field-type
-# coupling
-# parameter definitions: p = (mu, K, C)
-function tentCMap(x, p)
-    L = length(x);
-    mu = p[1];
-    K = p[2];
-    y = zeros(L);
-    y[1] = tentf(x[1], mu) + K/2*(tentf(x[L], mu) - 2*tentf(x[1], mu) + tentf(x[2], mu))
-    for i=2:L-1
-        y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
-    end
-    y[L] = tentf(x[L], mu) + K/2*(tentf(x[L-1], mu) - 2*tentf(x[L], mu) + tentf(x[1], mu))
-    y = y + tentCg(x, p)*ones(L);
-    return y
-end
-export tentCMap
-# in development
-function tentCJacobian(y, p)
-    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
-    L = length(y) # number of rows
-    J = zeros(L, L);
-    # useful constants
-    a = K/2 - beta/L; c = -beta/L; d = 1 - K-beta/L;
-    for i=1:L
-        J[i, :] = c*tentdf.(y, mu);
-    end
-
-    # construct evolution matrix
-    for i in 2:L-1
-        J[i, i-1] = a*tentdf(y[i-1], mu)
-        J[i, i]   = d*tentdf(y[i], mu)
-        J[i, i+1] = a*tentdf(y[i+1], mu)
-    end
-    J[1, 1] = d*tentdf(y[1], mu)
-    J[1, L] = a*tentdf(y[L], mu)
-    J[1, 2] = a*tentdf(y[2], mu)
-    J[L, L] = d*tentdf(y[L], mu)
-    J[L, 1] = a*tentdf(y[1], mu)
-    J[L, L-1] = a*tentdf(y[L-1], mu)
-    return J
-end
-export tentCJacobian
-
-function tentCg(x, p)
-    N = length(x);
-    mu = p[1]; K = p[2]; C = p[3]; beta = p[4];
-    return beta/N*(C - sum(tentf.(x, mu)))
-end
 #-----------------------------------------------------------------------------#
 # functions useful for calculating CLVs for flows
 
@@ -474,15 +250,15 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     nsResets = Int(ns/nsim)
     cdelayResets = Int(cdelay/nsim)
     # create data handles for storing the data and allocate the necesary
-    cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
-    rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
-    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
- #     jH = d_create(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
+    cH = create_dataset(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
+    rH = create_dataset(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
+    qH = create_dataset(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
+ #     jH = create_dataset(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
-    yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns))
-    rwH = d_create(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
-    cwH = d_create(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
-    λH = d_create(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
+    yH = create_dataset(fid, "y", datatype(Float64), dataspace(ht, ns))
+    rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+    cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    λH = create_dataset(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
     # store parameters of the run
     fid["parameters"] = p;
     fid["delay"] = delay;
@@ -572,15 +348,15 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     nsResets = Int(ns/nsim)
     cdelayResets = Int(cdelay/nsim)
     # create data handles for storing the data and allocate the necesary
-    cH = d_create(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
-    rH = d_create(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
-    qH = d_create(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
- #     jH = d_create(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
+    cH = create_dataset(fid, "c", datatype(Float64), dataspace(ne, ne, ns))
+    rH = create_dataset(fid, "r", datatype(Float64), dataspace(ne, ne, ns))
+    qH = create_dataset(fid, "q", datatype(Float64), dataspace(ht, ne, ns))
+ #     jH = create_dataset(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
-    yH = d_create(fid, "y", datatype(Float64), dataspace(ht, ns))
-    rwH = d_create(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
-    cwH = d_create(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
-    λH = d_create(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
+    yH = create_dataset(fid, "y", datatype(Float64), dataspace(ht, ns))
+    rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+    cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    λH = create_dataset(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
     # store parameters of the run
     fid["parameters"] = p;
     fid["delay"] = delay;
@@ -737,8 +513,8 @@ function clvGinelliLongBackwards(datafile, keepCLVWarmup)
     # implementing lazy delete, could revise data storage to more efficiently
     # overwrite variables instead of creating new ones
     if !keepCLVWarmup
-        o_delete(fid, "rw")
-        o_delete(fid, "cw")
+        delete_object(fid, "rw")
+        delete_object(fid, "cw")
     end
     # close file
     close(fid)
@@ -1017,7 +793,7 @@ function DOS(datafile::String, windows)
     # @assert(window < ns && window > 0) # checks that window is not too large
     mktemp() do path, io
         fid = h5open(path, "w")
-        growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
+        growth = create_dataset(fid, "growth", datatype(Float64), dataspace(ne, ns))
         @showprogress "Instant Growths " for i = 1:ns-1
             C1 = reshape(cH[:, :, i], (ne, ne));
             R2 = reshape(rH[:, :, i+1], (ne, ne));
@@ -1107,7 +883,7 @@ function DOS(RS, CS, windows)
     # @assert(window < ns && window > 0) # checks that window is not too large
     mktemp() do path, io
         fid = h5open(path, "w")
-        growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
+        growth = create_dataset(fid, "growth", datatype(Float64), dataspace(ne, ns))
         @showprogress "Instant Growths " for i = 1:ns-1
             C1 = CS[:, :, i]
             R2 = RS[:, :, i+1]
@@ -1176,70 +952,6 @@ function dosViolations(CLV_growth::Array{Float64, 1})
 end
 
 
-#-----------------------------------------------------------------------------#
-# functions for calculating angle between CLVs along with subspaces spanned by
-# several CLVs into a manifold
-
-function minimumManifoldAngle(datafile::String, uInd, sInd)
-    # calculate minimum principal angle of specified subspaces in C
-    # initializes theta matrix to contain the mimimum angle
-    fid = h5open(datafile, "r")
-    # rH = fid["r"];
-    cH = fid["c"];
-    ns = size(cH, 3);
-    ne = size(cH, 1);
-    θ = zeros(ns)
-    cTemp = zeros(ne, ne);
-    @showprogress "Manifold Angle " for t=1:ns
-        cTemp = reshape(cH[:, :, t], (ne, ne));
-        θ[t] = minimumManifoldAngle(cTemp, uInd, sInd)
-    end
-    close(fid)
-    # return theta array containing minimum principal angle at each timestep
-    return θ
-end
-
-function minimumManifoldAngle(datafile::String, uInd, sInd, nsim)
-    # calculate minimum principal angle of specified subspaces in C
-    # initializes theta matrix to contain the mimimum angle
-    fid = h5open(datafile, "r")
-    # rH = fid["r"];
-    cH = fid["c"];
-    ns = size(cH, 3);
-    ne = size(cH, 1);
-    nsResets = Int(ns/nsim);
-    θ = zeros(ns);
-    cTemp = zeros(ne, ne, nsim);
-    @showprogress "Manifold Angle " for t=1:nsResets
-        trng = range((t-1)*nsim+1, length=nsim)
-        cTemp = cH[:, :, trng];
-        θ[trng] = minimumManifoldAngle(cTemp, uInd, sInd)
-    end
-    close(fid)
-    # return theta array containing minimum principal angle at each timestep
-    return θ
-end
-
-function minimumManifoldAngle(C::Array{Float64, 3}, uInd, sInd)
-    # calculate minimum principal angle of specified subspaces in C
-    # initializes theta matrix to contain the mimimum angle
-    θ = zeros(size(C, 3))
-    ns = size(C, 3)
-    for t=1:ns
-        θ[t] = minimumManifoldAngle(C[:, :, t], uInd, sInd)
-    end
-    # return theta array containing minimum principal angle at each timestep
-    return θ
-end
-
-function minimumManifoldAngle(C::Array{Float64, 2}, uInd, sInd)
-    u1 = C[:, uInd]; u2 = C[:, sInd];
-    # use Array function to get correct size Q from QR decomposition quickly
-    q1 = Array(qr(u1).Q); q2 = Array(qr(u2).Q);
-    theta = acos(round(svdvals(q2'q1)[1], digits=14));
-    return theta
-end
-export minimumManifoldAngle
 
 
 #-----------------------------------------------------------------------------#
@@ -1341,58 +1053,7 @@ function binSelelector(datum, mn, mx, nbins)
     end
 end
 # take array of numbers in and return 'histogram' of array
-"""
-  pdf(data::Array{Float64, 1}, nbins::Int)
-  returns a pdf version of the input data.  a primitive version of a histogram.
-"""
-function pdf(data::Array{Float64, 1}, nbins::Int)
-  mx = maximum(data)
-  mx /= nbins
-  dist = zeros(nbins)
-  for datum in data
-    if !isapprox(datum, mx*nbins)
-      dist[floor(Int, div(datum, mx)) + 1] += 1
-    else
-      dist[nbins] += 1
-    end
-  end
-  dist /= length(data)
-  return dist
-end
 
-"""
-  pdf(data::Array{Float64, 1}, nbins::Int, xlims::Tuple)
-  returns a pdf version of the input data.  a primitive version of a histogram.
-"""
-function pdf(data::Array{Float64, 1}, nbins::Int, xlims)
-    mn, mx = xlims
-    boxes = range(mn, length=nbins, stop=mx)
-    boxWidth = (mx - mn)/nbins
-    dist = zeros(nbins)
-    for datum in data
-        if !isapprox(datum, mx*nbins)
-            dist[floor(Int, div(datum-mn, boxWidth)) + 1] += 1
-        else
-            dist[nbins] += 1
-        end
-    end
-    # renormalize distribution so integral is one
-    dist /= length(data)
-    # @assert abs(sum(dist) - 1) < 10^-10
-    return boxes, dist
-end
-"""
-  pdf(data::Array{Float64, 1}, nbins::Int, xlims::Tuple)
-  returns a pdf version of the input data.  a primitive version of a histogram.
-"""
-function pdf(data::Array{Float64, 1},
-    theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
-    mn, mx, nbins = theta[1], theta[end], length(theta)
-    xlims = (mn, mx)
-    a, dist = pdf(data, nbins, xlims)
-    return dist
-end
-export pdf
 
 """
   sumu!(y, u)
@@ -1460,123 +1121,7 @@ function zeroIndex(lypspec::Array{Float64, 1})
     return ind_cross
 end
 export zeroIndex
-"""
-  angle(v1::Arrray{Float64, 1}, v2::Array{Float64, 1})
 
-  Returns angle between two one dimensional vectors. Assumes equal length.
-"""
-function angle(v1::Array{Float64, 1}, v2::Array{Float64, 1})
-  return acos(round(dot(v1, v2)/(norm(v1)*norm(v2)), digits=14))
-end
-export angle
-
-"""
-  allAngles(C::Array{Float64, 2})
-
-  Returns angle between all vectors in set, assuming normal vectors
-"""
-function allAngles(C::Array{Float64, 2}, normalized=true)
-    if !normalized
-        for i = 1:size(C, 2)
-            C[:, i] = C[:, i]/norm(C[:, i])
-        end
-    end
-    return acos.(round.(C'*C, digits=14))
-end
-"""
-  allAngles(C::Array{Float64, 3})
-
-  Returns angle between all vectors in set, assuming normal vectors
-"""
-function allAngles(C::Array{Float64, 3}, normalized=true)
-    ns = size(C, 3);
-    data = zeros(size(C));
-    for t = 1:ns
-        data[:, :, t] = allAngles(C[:, :, t], normalized)
-    end
-    return data
-end
-export allAngles
-"""
-  allAngleDistribution(C::Array{Float64, 3}, normalized=true, nbins=100, xlims=(0, pi))
-
-  Returns angle between all vectors in set, assuming normal vectors.
-"""
-function allAngleDistribution(C::Array{Float64, 3},normalized::Bool,
-     nbins::Int64, xlims::Tuple{Real, Real})
-    data = zeros(size(C));
-    ns = size(C, 3);
-    for t = 1:ns
-        data[:, :, t] = allAngles(C[:, :, t], normalized)
-    end
-    ne = size(C, 1);
-    dist = zeros(ne, ne, nbins);
-    # timeseries = zeros(ns);
-    for i = 1:ne
-        for j=1:ne
-            # println("i:\t$i,\tj:\t$j")
-            a, dist[i, j, :] = pdf(data[i, j, :], nbins, xlims)
-        end
-    end
-    return dist
-end
-"""
-  allAngleDistribution(C::Array{Float64, 3},
-  theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
-
-  Returns angle between all vectors in set, assuming normal vectors.
-"""
-function allAngleDistribution(C::Array{Float64, 3},
-normalized=true,
-theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
-    data = zeros(size(C));
-    ns = size(C, 3);
-    nbins = length(theta);
-    for t = 1:ns
-        data[:, :, t] = allAngles(C[:, :, t], normalized)
-    end
-    ne = size(C, 1);
-    dist = zeros(ne, ne, nbins);
-    # timeseries = zeros(ns);
-    for i = 1:ne
-        for j=1:ne
-            # println("i:\t$i,\tj:\t$j")
-            dist[i, j, :] = pdf(data[i, j, :], theta)
-        end
-    end
-    return dist
-end
-"""
-  allAngleDistribution(datafile::String,
-  theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}})
-
-  Returns angle between all vectors in set, assuming normal vectors.
-"""
-function allAngleDistribution(datafile::String, normalized, nsim::Int64,
-theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
-    fid = h5open(datafile, "r");
-    cH = fid["c"];
-    ne = size(cH, 1); ns = size(cH, 3);
-    mn, mx, nbins = theta[1], theta[end], length(theta);
-    nsResets = Int(ns/nsim);
-    data = zeros(ne, ne, nbins);
-    count = zeros(ne, ne, nbins);
-    boxWidth = (mx - mn)/nbins
-    @showprogress "Calculating Angles " for t = 1:nsResets
-        trng = range((t-1)*nsim+1, length=nsim)
-        data = allAngles(cH[:, :, trng], normalized)
-        for i=1:ne
-            for j=1:ne
-                count[i, j, :] += pdf(data[i, j, :], theta)*nsim*boxWidth
-            end
-        end
-    end
-    close(fid)
-    count /= (boxWidth*ns)
-    return count
-end
-
-export allAngleDistribution
 
 """
     localization(v, normalized=true)
@@ -1626,5 +1171,10 @@ function averageLocalization(datafile::String, storefile::String, nsim)
     return locCLV
 end
 
+# additional functions, moved to a new file for convience
+include("maps_flows_jacobians.jl")
+include("maps_flows_jacobians_2d.jl")
+include("angle_analysis.jl")
+include("domain_analysis.jl")
 
 end # module
