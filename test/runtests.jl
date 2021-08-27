@@ -256,7 +256,8 @@ yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapuno
 
 nsim = 25 # 50 # 10;
 datafile = "testTentMap2.h5"
-covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile)
+keepCLVWarmup = true;
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile, keepCLVWarmup)
 lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
 cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
 fid = h5open(datafile, "r")
@@ -280,7 +281,8 @@ println("Error in Rw matchup: \t", norm(Rw - rwFile))
 @test norm(RS-rFile) == 0
 @test norm(Cw-cwFile) == 0
 @test norm(Rw-rwFile) == 0
-
+# remove data file
+rm(datafile)
 #------------------------------------------------------------------------------
 # Unit testing for minimumManifoldAngle function
 uInd = 1:5; sInd = 6:10; ne = 10;

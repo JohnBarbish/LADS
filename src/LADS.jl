@@ -189,7 +189,7 @@ function tentCMapRBC(x, p)
     for i=2:L-2
         y[i] = tentf(x[i], mu) + K/2*(tentf(x[i-1], mu) - 2*tentf(x[i], mu) + tentf(x[i+1], mu))
     end
-    y[1:L-2] = y[1:L-2] + tentCg(x[1:L-2], p)*ones(L-2);
+    y[1:L-2] = y[1:L-2] + tentCg(x[1:L], p)*ones(L-2);
     y[L-1] = x[L-1]
     y[L] = x[L]
     return y
