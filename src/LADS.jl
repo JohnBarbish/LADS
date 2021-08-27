@@ -333,7 +333,7 @@ function lyapunovSpectrumCLVMap(datafile)
         ns =size(cH, 3); ne = size(cH, 1);
         lypspec = zeros(ne);
         C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress "CLV Exponents " for i = 2:ns
+        @showprogress 10 "CLV Exponents " for i = 2:ns
             C = reshape(cH[:, :, i-1], (ne, ne));
             R = reshape(rH[:, :, i], (ne, ne));
             lypspec += log.(clvInstantGrowth(C, R))
@@ -351,7 +351,7 @@ function lyapunovSpectrumCLV(datafile)
         ns =size(cH, 3); ne = size(cH, 1);
         lypspec = zeros(ne);
         C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress "CLV Exponents " for i = 2:ns
+        @showprogress 10 "CLV Exponents " for i = 2:ns
             C = reshape(cH[:, :, i-1], (ne, ne));
             R = reshape(rH[:, :, i], (ne, ne));
             lypspec += log.(clvInstantGrowth(C, R))
@@ -394,14 +394,14 @@ function clvGinelliBackwards(QS, RS, Rw)
     # warm up C vectors with backward transient Rw matrices
     C = Matrix(1.0I, ne, ne)
     Cw[:, :, cdelay] = C;
-    @showprogress "Warmup Completion " for i = cdelay-1:-1:1
+    @showprogress 10 "Warmup Completion " for i = cdelay-1:-1:1
         C = backwardsRC(C, Rw[:, :, i+1]);
         Cw[:, :, i] = C;
     end
     C = backwardsRC(Cw[:, :, 1], Rw[:, :, 1]);
     CS[:, :, end] = C;
     println("set IC for calculating V.")
-    @showprogress "Sample Completion " for i = ns-1:-1:1
+    @showprogress 10 "Sample Completion " for i = ns-1:-1:1
         C = backwardsRC(C, RS[:, :, i+1]);
         CS[:, :, i] = C;
     end
@@ -423,7 +423,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     # warm up the lattice and Gram-Schmidt Vectors
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
-    @showprogress "Delay Completed " for i=1:delay
+    @showprogress 10 "Delay Completed " for i=1:delay
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps)
     end
@@ -438,7 +438,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     RS = zeros(ne, ne, ns);
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    @showprogress "Sample Calculations Completed " for i=1:ns
+    @showprogress 10 "Sample Calculations Completed " for i=1:ns
         yS[:, i] = x0;
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         vn[:, i] = v/norm(v);
@@ -450,7 +450,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     # create R data for warming up C
     Rw = zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, cdelay);
-    @showprogress "Forward Warmup Completed " for i=1:cdelay
+    @showprogress 10 "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         Rw[:, :, i] = r
@@ -503,7 +503,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     numsteps = ns*nsps
     # warm up the lattice and Gram-Schmidt Vectors
     λi = zeros(ne, nsim) # zeros(ne, delayResets)
-    @showprogress "Delay Completed " for i=1:delayResets
+    @showprogress 10 "Delay Completed " for i=1:delayResets
         for j=1:nsim
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             λi[:, j] = log.(diag(r))/(nsps)
@@ -521,7 +521,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     RS = zeros(ne, ne, nsim); # zeros(ne, ne, ns);
     QS = zeros(ht, ne, nsim); # zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    @showprogress "Sample Calculations Completed " for i=1:nsResets
+    @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
             yS[:, j] = x0;
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
@@ -541,7 +541,7 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     # create R data for warming up C
     Rw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
-    @showprogress "Forward Warmup Completed " for i=1:cdelayResets
+    @showprogress 10 "Forward Warmup Completed " for i=1:cdelayResets
         for j=1:nsim
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             RS[:, :, j] = r
@@ -602,7 +602,7 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     numsteps = ns*nsps
     # warm up the lattice and Gram-Schmidt Vectors
     λi = zeros(ne, nsim) # zeros(ne, delayResets)
-    @showprogress "Delay Completed " for i=1:delayResets
+    @showprogress 10 "Delay Completed " for i=1:delayResets
         for j=1:nsim
             x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
             λi[:, j] = log.(diag(r))/(nsps*δt)
@@ -620,7 +620,7 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     RS = zeros(ne, ne, nsim); # zeros(ne, ne, ns);
     QS = zeros(ht, ne, nsim); # zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    @showprogress "Sample Calculations Completed " for i=1:nsResets
+    @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
             yS[:, j] = x0;
             x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
@@ -640,7 +640,7 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     # create R data for warming up C
     Rw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
-    @showprogress "Forward Warmup Completed " for i=1:cdelayResets
+    @showprogress 10 "Forward Warmup Completed " for i=1:cdelayResets
         for j=1:nsim
             x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
             RS[:, :, j] = r
@@ -689,7 +689,7 @@ function clvGinelliLongBackwards(datafile, keepCLVWarmup)
     # cwH[:,:, end] = C1;
     # CS[:, :, end] = C1;
     # warms up C matrix
-    @showprogress "Warmup Completion " for i = cdelayResets:-1:1
+    @showprogress 10 "Warmup Completion " for i = cdelayResets:-1:1
         # read values from dataset
         trng = range((i-1)*nsim+1, length=nsim)
         # println("Warmup Completion:\t $(round((cdelayResets-i)/cdelayResets*100))%,\t Range:\t $trng")
@@ -718,7 +718,7 @@ function clvGinelliLongBackwards(datafile, keepCLVWarmup)
     # C1 = Matrix(1.0I, ne, ne);
     # C0 = zeros(ne, ne);
     # cwH[:,:, end] = C1;
-    @showprogress "Sample Completion " for i = nsResets:(-1):1
+    @showprogress 10 "Sample Completion " for i = nsResets:(-1):1
         # read values from dataset
         trng = range((i-1)*nsim+1, length=nsim)
         # println("Completion:\t $(round((nsResets-i)/nsResets*100))%,\t Range:\t $trng")
@@ -834,7 +834,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     # warm up the lattice and Gram-Schmidt Vectors
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
-    @showprogress "Delay Completed " for i=1:delay
+    @showprogress 10 "Delay Completed " for i=1:delay
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps*δt)
     end
@@ -849,7 +849,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     RS = zeros(ne, ne, ns);
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
-    @showprogress "Sample Calculations Completed " for i=1:ns
+    @showprogress 10 "Sample Calculations Completed " for i=1:ns
         yS[:, i] = x0;
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         vn[:, i] = v/norm(v);
@@ -861,7 +861,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     # create R data for warming up C
     Rw = zeros(ne, ne, cdelay);
     Qw = zeros(ht, ne, cdelay);
-    @showprogress "Forward Warmup Completed " for i=1:cdelay
+    @showprogress 10 "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         Rw[:, :, i] = r
@@ -915,7 +915,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
     # times the number of steps per sample (nsps)
     numsteps = ns*nsps
     # warm up the lattice (x0) and perturbations (delta)
-    @showprogress "Delay Completed " for i in 1:delay
+    @showprogress 10 "Delay Completed " for i in 1:delay
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         # timestep(lattice)
     end
@@ -925,7 +925,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
     if saverunavg
         lypspecGS = zeros(ne, ns)
         lsGSravg = zeros(ne)
-        @showprogress "Sample Calculations Completed " for i=1:ns
+        @showprogress 10 "Sample Calculations Completed " for i=1:ns
         # for i=1:ns
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             lsGSravg += log.(diag(r))
@@ -934,7 +934,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
         println("the GSV Lyapunov Spectrum is:")
         println(lypspecGS[:, end])
     else
-        @showprogress "Sample Calculations Completed " for i=1:ns
+        @showprogress 10 "Sample Calculations Completed " for i=1:ns
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             lypspecGS += log.(diag(r))/(ns*nsps)
         end
@@ -995,7 +995,7 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
     nutemp = zeros(ne, ne);
     CLV_growth = zeros(ne);
     # @assert(window < ns && window > 0) # checks that window is not too large
-    @showprogress "Calculating DOS " for i=1:ns-window
+    @showprogress 10 "Calculating DOS " for i=1:ns-window
         # added for loop to go have the instantaneous CLV growth averaged over window
         CLV_growth = zeros(ne);
         for j=0:window-1
@@ -1030,7 +1030,7 @@ function DOS(datafile::String, windows)
     mktemp() do path, io
         fid = h5open(path, "w")
         growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
-        @showprogress "Instant Growths " for i = 1:ns-1
+        @showprogress 10 "Instant Growths " for i = 1:ns-1
             C1 = reshape(cH[:, :, i], (ne, ne));
             R2 = reshape(rH[:, :, i+1], (ne, ne));
             fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
@@ -1045,7 +1045,7 @@ function DOS(datafile::String, windows)
                 end
                 clvGrowth /= window
                 nutemp = dosViolations(clvGrowth)
-                @showprogress "Window: $window " for i = 2:ns-window
+                @showprogress 10 "Window: $window " for i = 2:ns-window
                    clvGrowth -= reshape(fid["growth"][:, i-1], ne)/window;
                    clvGrowth += reshape(fid["growth"][:, i+window-1], ne)/window;
                    nutemp += dosViolations(clvGrowth);
@@ -1054,7 +1054,7 @@ function DOS(datafile::String, windows)
                 nuDict[window] = nu;
             else
                 # regular process
-                @showprogress "Window: $window " for i=1:ns-window
+                @showprogress 10 "Window: $window " for i=1:ns-window
                     # added for loop to go have the instantaneous CLV growth
                     # averaged over window
                     CLV_growth = zeros(ne);
@@ -1088,7 +1088,7 @@ function DOS(RS, CS, window::Int64) # ::HDF5.HDF5File) problem with HDF5 type
   nutemp = zeros(ne, ne);
   CLV_growth = zeros(ne);
   # @assert(window < ns && window > 0) # checks that window is not too large
-  @showprogress "Calculating DOS " for i=1:ns-window
+  @showprogress 10 "Calculating DOS " for i=1:ns-window
     # added for loop to go have the instantaneous CLV growth averaged over window
     CLV_growth = zeros(ne);
     for j=0:window-1
@@ -1120,7 +1120,7 @@ function DOS(RS, CS, windows)
     mktemp() do path, io
         fid = h5open(path, "w")
         growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
-        @showprogress "Instant Growths " for i = 1:ns-1
+        @showprogress 10 "Instant Growths " for i = 1:ns-1
             C1 = CS[:, :, i]
             R2 = RS[:, :, i+1]
             fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
@@ -1135,7 +1135,7 @@ function DOS(RS, CS, windows)
                 end
                 clvGrowth /= window
                 nutemp = dosViolations(clvGrowth)
-                @showprogress "Window: $window " for i = 2:ns-window
+                @showprogress 10 "Window: $window " for i = 2:ns-window
                    clvGrowth -= reshape(fid["growth"][:, i-1], ne)/window;
                    clvGrowth += reshape(fid["growth"][:, i+window-1], ne)/window;
                    nutemp += dosViolations(clvGrowth);
@@ -1144,7 +1144,7 @@ function DOS(RS, CS, windows)
                 nuDict[window] = nu;
             else
                 # regular process
-                @showprogress "Window: $window " for i=1:ns-window
+                @showprogress 10 "Window: $window " for i=1:ns-window
                     # added for loop to go have the instantaneous CLV growth
                     # averaged over window
                     CLV_growth = zeros(ne);
@@ -1202,7 +1202,7 @@ function minimumManifoldAngle(datafile::String, uInd, sInd)
     ne = size(cH, 1);
     θ = zeros(ns)
     cTemp = zeros(ne, ne);
-    @showprogress "Manifold Angle " for t=1:ns
+    @showprogress 10 "Manifold Angle " for t=1:ns
         cTemp = reshape(cH[:, :, t], (ne, ne));
         θ[t] = minimumManifoldAngle(cTemp, uInd, sInd)
     end
@@ -1222,7 +1222,7 @@ function minimumManifoldAngle(datafile::String, uInd, sInd, nsim)
     nsResets = Int(ns/nsim);
     θ = zeros(ns);
     cTemp = zeros(ne, ne, nsim);
-    @showprogress "Manifold Angle " for t=1:nsResets
+    @showprogress 10 "Manifold Angle " for t=1:nsResets
         trng = range((t-1)*nsim+1, length=nsim)
         cTemp = cH[:, :, trng];
         θ[trng] = minimumManifoldAngle(cTemp, uInd, sInd)
@@ -1325,7 +1325,7 @@ function averagePowerSpectrum(datafile::String)
         krng, w = powerSpectrum(vTemp, 1); # assumes dx=1
         nk = length(krng);
         psdx = zeros(nk, ht);
-        @showprogress "Power Spectrum " for t=1:ns # t=1:nsResets
+        @showprogress 10 "Power Spectrum " for t=1:ns # t=1:nsResets
             qTemp = reshape(qH[:, :, t], (ht, ne));
             cTemp = reshape(cH[:, :, t], (ne, ne));
             vTemp = qTemp*cTemp;
@@ -1585,7 +1585,7 @@ theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Flo
     data = zeros(ne, ne, nbins);
     count = zeros(ne, ne, nbins);
     boxWidth = (mx - mn)/nbins
-    @showprogress "Calculating Angles " for t = 1:nsResets
+    @showprogress 10 "Calculating Angles " for t = 1:nsResets
         trng = range((t-1)*nsim+1, length=nsim)
         data = allAngles(cH[:, :, trng], normalized)
         for i=1:ne
@@ -1628,7 +1628,7 @@ function multiMinimumManifoldAngle(datafile::String, rng)
     ntheta = length(rng);
     θ = zeros(ntheta, ns)
     cTemp = zeros(ne, ne);
-    @showprogress "Manifold Angle " for t=1:ns
+    @showprogress 10 "Manifold Angle " for t=1:ns
     # for t=1:ns
         cTemp = reshape(cH[:, :, t], (ne, ne));
         θ[:, t] = multiMinimumManifoldAngle(cTemp, rng)
@@ -1655,7 +1655,7 @@ function clvfromQR(datafile, storefile)
         fidw = h5open(storefile, "w")
         vH = d_create(fidw, "v",datatype(Float64), dataspace(ht, ne, ns));
         clv_loc = zeros(ne);
-        @showprogress "Calculating CLVs" 10 for i = 1:ns
+        @showprogress 10 "Calculating CLVs" for i = 1:ns
             Ci = cH[:, :, i];
             Qi = qH[:, :, i];
             Ci = reshape(Ci, (ne, ne));
@@ -1703,7 +1703,7 @@ function averageLocalization(datafile::String, storefile::String, nsim)
     Ci = zeros(ne, ne); Qi = zeros(ht, ne); VS = zeros(ht, ne);
     CS = zeros(ne, ne, nsim); QS = zeros(ht, ne, nsim);
     nsResets = Int(ns/nsim);
-    @showprogress "Calculating Localization " for t1 = 1:nsResets
+    @showprogress 10 "Calculating Localization " for t1 = 1:nsResets
         trng = range((t1-1)*nsim+1, length=nsim);
         CS = cH[:, :, trng]; QS = qH[:, :, trng];
         for t = 1:nsim
