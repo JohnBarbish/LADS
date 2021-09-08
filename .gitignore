@@ -4,3 +4,7 @@
 .DS_Store
 # /Manifest.toml
 /dev/
+*.gif
+*.h5
+*.png
+*.pdf
