@@ -326,40 +326,70 @@ function lyapunovSpectrumCLVMap(CS, RS, nsps)
     return lyapunovSpectrumCLV(CS, RS, nsps, 1)
 end
 
-function lyapunovSpectrumCLVMap(datafile)
+function lyapunovSpectrumCLVMap(datafile; saverunavg=false)
     h5open(datafile, "r") do fid
         global lypspec
         cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
         ns =size(cH, 3); ne = size(cH, 1);
-        lypspec = zeros(ne);
-        C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress 10 "CLV Exponents " for i = 2:ns
-            C = reshape(cH[:, :, i-1], (ne, ne));
-            R = reshape(rH[:, :, i], (ne, ne));
-            lypspec += log.(clvInstantGrowth(C, R))
+        if saverunavg
+            # save running avereage
+            lypspec = zeros(ne, ns);
+            lypspectmp = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspectmp += log.(clvInstantGrowth(C, R));
+                lypspec[:, i] = lypspectmp/((i-1)*nsps);
+            end
+        else
+            # just calculate value at end
+            lypspec = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspec += log.(clvInstantGrowth(C, R))
+            end
+            lypspec /= ((ns-1)*nsps)
         end
-    lypspec /= ((ns-1)*nsps)
     end
     return lypspec
 end
+export lyapunovSpectrumCLVMap
 
-function lyapunovSpectrumCLV(datafile)
+function lyapunovSpectrumCLV(datafile; saverunavg=false)
     h5open(datafile, "r") do fid
         global lypspec
         cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
         dt = read(fid["dt"]);
         ns =size(cH, 3); ne = size(cH, 1);
-        lypspec = zeros(ne);
-        C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress 10 "CLV Exponents " for i = 2:ns
-            C = reshape(cH[:, :, i-1], (ne, ne));
-            R = reshape(rH[:, :, i], (ne, ne));
-            lypspec += log.(clvInstantGrowth(C, R))
+        if saverunavg
+            # save runnning average
+            lypspectmp = zeros(ne);
+            lypspec = zeros(ne, ns);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspectmp += log.(clvInstantGrowth(C, R))
+                lypspec[:, i] = lypspectmp/((i-1)*nsps*dt);
+            end
+        else
+            # otehrwise just calc value at end
+            lypspec = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspec += log.(clvInstantGrowth(C, R))
+            end
+            lypspec /= ((ns-1)*nsps*dt)
         end
-    lypspec /= (ns*nsps*dt)
     end
     return lypspec
 end
+export lyapunovSpectrumCLV
 
 """
     clvInstantaneous(datafile::String, tS)
