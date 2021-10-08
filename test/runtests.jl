@@ -8,6 +8,7 @@ seed!(1234);
 @testset "LADS.jl" begin
 
 #------------------------------------------------------------------------------
+@testset "Maps and Jacobians" begin
 # unit test for lorenzFlow and lorenzJacobian functions
 # Get the Lorenz System running
 sigma = 10; rho = 28; beta = 8/3;
@@ -122,7 +123,7 @@ end
 # println(norm(J - dfdx) < length(J)*magδx*10)
 @test norm(J - dfdx) < size(J, 1)*magδx*10
 
-
+end
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function
 a = rand(100);
@@ -237,6 +238,7 @@ end
 
 
 #------------------------------------------------------------------------------
+@testset "CLV Map out of memory" begin
 # Comparison of CLV function in memory and out of memory
 # flow = linearFlow; jacobian = linearJacobian;
 # sigma = 10; rho = 28; beta = 8/3;
@@ -257,7 +259,8 @@ yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapuno
 nsim = 25 # 50 # 10;
 datafile = "testTentMap2.h5"
 keepCLVWarmup = true;
-covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile, keepCLVWarmup)
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, 
+    ne, cdelay, nsps, nsim, datafile, keepCLVWarmup=keepCLVWarmup,saverunavg=false)
 lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
 cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
 fid = h5open(datafile, "r")
@@ -283,6 +286,7 @@ println("Error in Rw matchup: \t", norm(Rw - rwFile))
 @test norm(Rw-rwFile) == 0
 # remove data file
 rm(datafile)
+end
 #------------------------------------------------------------------------------
 # Unit testing for minimumManifoldAngle function
 uInd = 1:5; sInd = 6:10; ne = 10;

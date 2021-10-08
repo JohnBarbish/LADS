@@ -788,11 +788,11 @@ end
 
 function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
             ns::Int64, ne::Int64, cdelay::Int64, nsps::Int64, nsim::Int64,
-            filename, keepCLVWarmup=false)
+            filename; keepCLVWarmup=false, saverunavg=true)
     clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
                                 nsim, filename)
     clvGinelliLongBackwards(filename, keepCLVWarmup)
-    lypspecCLV = lyapunovSpectrumCLVMap(filename, saverunavg=true) # , nsim)
+    lypspecCLV = lyapunovSpectrumCLVMap(filename, saverunavg=saverunavg) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
     end
