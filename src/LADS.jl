@@ -326,32 +326,42 @@ function lyapunovSpectrumCLVMap(CS, RS, nsps)
     return lyapunovSpectrumCLV(CS, RS, nsps, 1)
 end
 
-function lyapunovSpectrumCLVMap(datafile; saverunavg=false)
+function lyapunovSpectrumCLVMap(datafile; saverunavg=false, tstart=0, tend=0)
     h5open(datafile, "r") do fid
         global lypspec
         cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
-        ns =size(cH, 3); ne = size(cH, 1);
+        ne = size(cH, 1);
+        if tstart == 0 || tend == 0
+            # calculate for all times
+            ns = size(cH, 3);
+            ts = 2:ns;
+            ns = ns - 1;
+        else
+            # calculate for specified samples
+            ns = Int(tend - tstart);
+            ts = tstart+1:tend;
+        end
         if saverunavg
             # save running avereage
             lypspec = zeros(ne, ns);
             lypspectmp = zeros(ne);
             C = zeros(ne, ne); R = zeros(ne, ne);
-            @showprogress 10 "CLV Exponents " for i = 2:ns
-                C = reshape(cH[:, :, i-1], (ne, ne));
-                R = reshape(rH[:, :, i], (ne, ne));
+            @showprogress 10 "CLV Exponents " for (i, t) in enumerate(ts)
+                C = reshape(cH[:, :, t-1], (ne, ne));
+                R = reshape(rH[:, :, t], (ne, ne));
                 lypspectmp += log.(clvInstantGrowth(C, R));
-                lypspec[:, i] = lypspectmp/((i-1)*nsps);
+                lypspec[:, i] = lypspectmp/((i)*nsps);
             end
         else
             # just calculate value at end
             lypspec = zeros(ne);
             C = zeros(ne, ne); R = zeros(ne, ne);
-            @showprogress 10 "CLV Exponents " for i = 2:ns
-                C = reshape(cH[:, :, i-1], (ne, ne));
-                R = reshape(rH[:, :, i], (ne, ne));
+            @showprogress 10 "CLV Exponents " for (i, t) in enumerate(ts)
+                C = reshape(cH[:, :, t-1], (ne, ne));
+                R = reshape(rH[:, :, t], (ne, ne));
                 lypspec += log.(clvInstantGrowth(C, R))
             end
-            lypspec /= ((ns-1)*nsps)
+            lypspec /= ((ns)*nsps)
         end
     end
     return lypspec
@@ -782,12 +792,12 @@ function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
     clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
                                 nsim, filename)
     clvGinelliLongBackwards(filename, keepCLVWarmup)
-    lypspecCLV = lyapunovSpectrumCLVMap(filename) # , nsim)
+    lypspecCLV = lyapunovSpectrumCLVMap(filename, saverunavg=true) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
     end
     println("CLV Lyapunov Spectrum: ")
-    println(lypspecCLV)
+    println(lypspecCLV[:, end])
 #     return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst
 end
 
@@ -824,7 +834,7 @@ function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
     clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne,
                             cdelay, nsps, nsim, filename)
     clvGinelliLongBackwards(filename, keepCLVWarmup)
-    lypspecCLV = lyapunovSpectrumCLV(filename) # , nsim)
+    lypspecCLV = lyapunovSpectrumCLV(filename, saverunavg=true) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
     end
@@ -1089,14 +1099,23 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
 end
 
 """
-  DOS(datafile::String, windows)
+  DOS(datafile::String, windows; ts=0)
 Determines the Domination of Osledet Splitting based on recorded C and R matrices.
 """
-function DOS(datafile::String, windows)
+function DOS(datafile::String, windows; ts=0)
     fid = h5open(datafile, "r")
     rH = fid["r"];
     cH = fid["c"];
-    ns = size(rH, 3);
+    if ts == 0
+        # default is to use all data points from sampling
+        ns = size(rH, 3);
+        ts = 1:ns-1;
+    else
+        # set number of samples as the length of specified ts
+        # presumes ts is sequential timesteps
+        ns = length(ts);
+        ts = ts[1]:ts[end-1]
+    end
     ne = size(cH, 1);
     nu = zeros(ne, ne);
     nuDict = Dict();
@@ -1106,9 +1125,9 @@ function DOS(datafile::String, windows)
     mktemp() do path, io
         fid = h5open(path, "w")
         growth = d_create(fid, "growth", datatype(Float64), dataspace(ne, ns))
-        @showprogress 10 "Instant Growths " for i = 1:ns-1
-            C1 = reshape(cH[:, :, i], (ne, ne));
-            R2 = reshape(rH[:, :, i+1], (ne, ne));
+        @showprogress 10 "Instant Growths " for (i, t) in enumerate(ts)
+            C1 = reshape(cH[:, :, t], (ne, ne));
+            R2 = reshape(rH[:, :, t+1], (ne, ne));
             fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
         end
         for window in windows
@@ -1652,17 +1671,26 @@ end
   Returns angle between all vectors in set, assuming normal vectors.
 """
 function allAngleDistribution(datafile::String, normalized, nsim::Int64,
-theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
+theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100); ts=0)
+    # assumes that if ts is specified, then it is an integer multiple of nsim
     fid = h5open(datafile, "r");
     cH = fid["c"];
-    ne = size(cH, 1); ns = size(cH, 3);
+    ne = size(cH, 1); 
+    if ts == 0
+        # calculate for all samples
+        ns = size(cH, 3);
+        ts = 1:ns
+    else
+        # calculate for specified times
+        ns = Int((ts[end]-ts[1]));
+    end
     mn, mx, nbins = theta[1], theta[end], length(theta);
     nsResets = Int(ns/nsim);
     data = zeros(ne, ne, nbins);
     count = zeros(ne, ne, nbins);
     boxWidth = (mx - mn)/nbins
     @showprogress 10 "Calculating Angles " for t = 1:nsResets
-        trng = range((t-1)*nsim+1, length=nsim)
+        trng = range((t-1)*nsim+ts[1], length=nsim)
         data = allAngles(cH[:, :, trng], normalized)
         for i=1:ne
             for j=1:ne
