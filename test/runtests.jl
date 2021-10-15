@@ -8,7 +8,7 @@ seed!(1234);
 @testset "LADS.jl" begin
 
 include("maps_flows_jacobians_test.jl")
-
+include("maps_flows_jacobians_2d_test.jl")
 
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function
