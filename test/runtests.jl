@@ -9,7 +9,7 @@ seed!(1234);
 
 include("maps_flows_jacobians_test.jl")
 include("maps_flows_jacobians_2d_test.jl")
-
+include("angle_analysis_test.jl")
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function
 a = rand(100);
@@ -171,18 +171,6 @@ println("Error in Rw matchup: \t", norm(Rw - rwFile))
 # remove data file
 rm(datafile)
 end
-#------------------------------------------------------------------------------
-# Unit testing for minimumManifoldAngle function
-uInd = 1:5; sInd = 6:10; ne = 10;
-c = Matrix(1.0I, ne, ne);
-@test minimumManifoldAngle(c, uInd, sInd) == pi/2 # orthogonal set of vectors
-c[1, 1] = 1/sqrt(2); c[1, 2] = 1/sqrt(2);
-c[2, 1] = 1/sqrt(2); c[2, 2] = 1/sqrt(2);
-uInd = 1; sInd = 2:10;
-c = Matrix(1.0I, ne, ne);
-R(theta) = [cos(theta) -sin(theta); sin(theta) cos(theta)]
-c[1:2, 1] = R(pi/4)*c[1:2, 1];
-@test isapprox(minimumManifoldAngle(c, uInd, sInd), pi/4) # orthogonal set of vectors
 
 #------------------------------------------------------------------------------
 # Unit testing for sumu_rbc! function
