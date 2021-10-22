@@ -5,6 +5,6 @@
 # /Manifest.toml
 /dev/
 *.gif
-*.h5
 *.png
 *.pdf
+*.h5

@@ -7,123 +7,9 @@ seed!(1234);
 
 @testset "LADS.jl" begin
 
-#------------------------------------------------------------------------------
-@testset "Maps and Jacobians" begin
-# unit test for lorenzFlow and lorenzJacobian functions
-# Get the Lorenz System running
-sigma = 10; rho = 28; beta = 8/3;
-p = [sigma, rho, beta];
-x0 = rand(3); # δx = zeros(3); δx[1] = 10^-10;
-J = lorenzJacobian(x0, p);
-f0 = lorenzFlow(x0, p);
-dfdx = zeros(3, 3);
-magδx = 10^-8;
-for j = 1:3
-    δx = zeros(3); δx[j] = magδx;
-    dfdx[:, j] = ((lorenzFlow(x0+δx, p) - f0)/magδx)
-end
-
-# println(J)
-# println(dfdx)
-# println(J-dfdx)
-# println(norm(J - dfdx))
-# println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < size(J, 1)*magδx*10
-
-
-#------------------------------------------------------------------------------
-# unit test for modelAMap and modelAJacobian functions
-# Set parameters and test point
-a = 0.4; b = 1.3; L = 128; eps = 0.02;
-x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
-u0 = sum(x0)/L;
-p = [a, b, eps, u0];
-J = modelAJacobian(x0, p);
-f0 = modelAMap(x0, p);
-dfdx = zeros(L, L);
-magδx = 10^-8;
-for j = 1:L
-    δx = zeros(L); δx[j] = magδx;
-    dfdx[:, j] = ((modelAMap(x0+δx, p) - f0)/magδx)
-end
-
-# println(J)
-# println(dfdx)
-# println(J-dfdx)
-# println(norm(J - dfdx))
-# println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < size(J, 1)*magδx*10
-
-
-#------------------------------------------------------------------------------
-# unit test for tentMap and tentJacobian functions
-# Set parameters and test point
-mu = 0.2; K = 1.3; L = 128;
-p = [mu, K];
-x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
-J = tentJacobian(x0, p);
-f0 = tentMap(x0, p);
-dfdx = zeros(L, L);
-magδx = 10^-8;
-for j = 1:L
-    δx = zeros(L); δx[j] = magδx;
-    dfdx[:, j] = ((tentMap(x0+δx, p) - f0)/magδx)
-end
-
-# println(J)
-# println(dfdx)
-# println(J-dfdx)
-# println(norm(J - dfdx))
-# println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < size(J, 1)*magδx*10
-
-
-#------------------------------------------------------------------------------
-# unit test for tentCMap and tentCJacobian functions
-# Set parameters and test point
-mu = 0.2; K = 1.3; C = 1.0; beta = 0.75; L = 128;
-p = [mu, K, C, beta];
-x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
-J = tentCJacobian(x0, p);
-f0 = tentCMap(x0, p);
-dfdx = zeros(L, L);
-magδx = 10^-8;
-for j = 1:L
-    δx = zeros(L); δx[j] = magδx;
-    dfdx[:, j] = ((tentCMap(x0+δx, p) - f0)/magδx)
-end
-
-# println(J)
-# println(dfdx)
-# println(J-dfdx)
-# println(norm(J - dfdx))
-# println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < size(J, 1)*magδx*10
-
-#------------------------------------------------------------------------------
-# unit test for tentMapRBC and tentJacobianRBC functions
-# Set parameters and test point
-mu = 0.2; K = 1.3; C = 1.0; L = 128; beta = 1.0;
-x0 = rand(L); # δx = zeros(3); δx[1] = 10^-10;
-C = sum(x0);
-p = [mu, K, C, beta];
-J = tentCJacobianRBC(x0, p);
-f0 = tentCMapRBC(x0, p);
-dfdx = zeros(L, L);
-magδx = 10^-8;
-for j = 1:L-2
-    δx = zeros(L); δx[j] = magδx;
-    dfdx[:, j] = ((tentCMapRBC(x0+δx, p) - f0)/magδx)
-end
-
-# println(J)
-# println(dfdx)
-# println(J-dfdx)
-# println(norm(J - dfdx))
-# println(norm(J - dfdx) < length(J)*magδx*10)
-@test norm(J - dfdx) < size(J, 1)*magδx*10
-
-end
+include("maps_flows_jacobians_test.jl")
+include("maps_flows_jacobians_2d_test.jl")
+include("angle_analysis_test.jl")
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function
 a = rand(100);
@@ -236,16 +122,15 @@ xc, yc = remove_zero_datapoints(x, y)
     @test goodQS; @test goodRS; @test goodCS; @test goodlambdaInst;
 end
 
-
+@testset "CLV function in/out memory" begin
 #------------------------------------------------------------------------------
-@testset "CLV Map out of memory" begin
 # Comparison of CLV function in memory and out of memory
 # flow = linearFlow; jacobian = linearJacobian;
 # sigma = 10; rho = 28; beta = 8/3;
-K = 0.65; mu = 1.1; L = 256; seed!(1);
+K = 0.65; mu = 1.1; L = 20; seed!(1);
 x0 = rand(L)*0.03 - 0.1*ones(L); x1 = copy(x0);
 p = [mu K]; # [sigma rho beta];
-ne = 256;
+ne = 19;
 nsps = 2;
 tConverge = 200; # number of time units to look for convergence of QR values
 delay = Int(tConverge/(nsps));
@@ -259,8 +144,7 @@ yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapuno
 nsim = 25 # 50 # 10;
 datafile = "testTentMap2.h5"
 keepCLVWarmup = true;
-covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, 
-    ne, cdelay, nsps, nsim, datafile, keepCLVWarmup=keepCLVWarmup,saverunavg=false)
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile; keepCLVWarmup=keepCLVWarmup)
 lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
 cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
 fid = h5open(datafile, "r")
@@ -287,18 +171,6 @@ println("Error in Rw matchup: \t", norm(Rw - rwFile))
 # remove data file
 rm(datafile)
 end
-#------------------------------------------------------------------------------
-# Unit testing for minimumManifoldAngle function
-uInd = 1:5; sInd = 6:10; ne = 10;
-c = Matrix(1.0I, ne, ne);
-@test minimumManifoldAngle(c, uInd, sInd) == pi/2 # orthogonal set of vectors
-c[1, 1] = 1/sqrt(2); c[1, 2] = 1/sqrt(2);
-c[2, 1] = 1/sqrt(2); c[2, 2] = 1/sqrt(2);
-uInd = 1; sInd = 2:10;
-c = Matrix(1.0I, ne, ne);
-R(theta) = [cos(theta) -sin(theta); sin(theta) cos(theta)]
-c[1:2, 1] = R(pi/4)*c[1:2, 1];
-@test isapprox(minimumManifoldAngle(c, uInd, sInd), pi/4) # orthogonal set of vectors
 
 #------------------------------------------------------------------------------
 # Unit testing for sumu_rbc! function
