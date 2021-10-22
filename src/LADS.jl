@@ -102,40 +102,80 @@ function lyapunovSpectrumCLVMap(CS, RS, nsps)
     return lyapunovSpectrumCLV(CS, RS, nsps, 1)
 end
 
-function lyapunovSpectrumCLVMap(datafile)
+function lyapunovSpectrumCLVMap(datafile; saverunavg=false, tstart=0, tend=0)
     h5open(datafile, "r") do fid
         global lypspec
         cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
-        ns =size(cH, 3); ne = size(cH, 1);
-        lypspec = zeros(ne);
-        C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress 10 "CLV Exponents " for i = 2:ns
-            C = reshape(cH[:, :, i-1], (ne, ne));
-            R = reshape(rH[:, :, i], (ne, ne));
-            lypspec += log.(clvInstantGrowth(C, R))
+        ne = size(cH, 1);
+        if tstart == 0 || tend == 0
+            # calculate for all times
+            ns = size(cH, 3);
+            ts = 2:ns;
+            ns = ns - 1;
+        else
+            # calculate for specified samples
+            ns = Int(tend - tstart);
+            ts = tstart+1:tend;
         end
-    lypspec /= ((ns-1)*nsps)
+        if saverunavg
+            # save running avereage
+            lypspec = zeros(ne, ns);
+            lypspectmp = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for (i, t) in enumerate(ts)
+                C = reshape(cH[:, :, t-1], (ne, ne));
+                R = reshape(rH[:, :, t], (ne, ne));
+                lypspectmp += log.(clvInstantGrowth(C, R));
+                lypspec[:, i] = lypspectmp/((i)*nsps);
+            end
+        else
+            # just calculate value at end
+            lypspec = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for (i, t) in enumerate(ts)
+                C = reshape(cH[:, :, t-1], (ne, ne));
+                R = reshape(rH[:, :, t], (ne, ne));
+                lypspec += log.(clvInstantGrowth(C, R))
+            end
+            lypspec /= ((ns)*nsps)
+        end
     end
     return lypspec
 end
+export lyapunovSpectrumCLVMap
 
-function lyapunovSpectrumCLV(datafile)
+function lyapunovSpectrumCLV(datafile; saverunavg=false)
     h5open(datafile, "r") do fid
         global lypspec
         cH = fid["c"]; rH = fid["r"]; nsps = read(fid["nsps"]);
         dt = read(fid["dt"]);
         ns =size(cH, 3); ne = size(cH, 1);
-        lypspec = zeros(ne);
-        C = zeros(ne, ne); R = zeros(ne, ne);
-        @showprogress 10 "CLV Exponents " for i = 2:ns
-            C = reshape(cH[:, :, i-1], (ne, ne));
-            R = reshape(rH[:, :, i], (ne, ne));
-            lypspec += log.(clvInstantGrowth(C, R))
+        if saverunavg
+            # save runnning average
+            lypspectmp = zeros(ne);
+            lypspec = zeros(ne, ns);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspectmp += log.(clvInstantGrowth(C, R))
+                lypspec[:, i] = lypspectmp/((i-1)*nsps*dt);
+            end
+        else
+            # otehrwise just calc value at end
+            lypspec = zeros(ne);
+            C = zeros(ne, ne); R = zeros(ne, ne);
+            @showprogress 10 "CLV Exponents " for i = 2:ns
+                C = reshape(cH[:, :, i-1], (ne, ne));
+                R = reshape(rH[:, :, i], (ne, ne));
+                lypspec += log.(clvInstantGrowth(C, R))
+            end
+            lypspec /= ((ns-1)*nsps*dt)
         end
-    lypspec /= (ns*nsps*dt)
     end
     return lypspec
 end
+export lyapunovSpectrumCLV
 
 """
     clvInstantaneous(datafile::String, tS)
@@ -524,16 +564,16 @@ end
 
 function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
             ns::Int64, ne::Int64, cdelay::Int64, nsps::Int64, nsim::Int64,
-            filename, keepCLVWarmup=false)
+            filename; keepCLVWarmup=false, saverunavg=false)
     clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
                                 nsim, filename)
     clvGinelliLongBackwards(filename, keepCLVWarmup)
-    lypspecCLV = lyapunovSpectrumCLVMap(filename) # , nsim)
+    lypspecCLV = lyapunovSpectrumCLVMap(filename, saverunavg=saverunavg) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
     end
     println("CLV Lyapunov Spectrum: ")
-    println(lypspecCLV)
+    println(lypspecCLV[:, end])
 #     return yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst
 end
 
@@ -570,7 +610,7 @@ function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
     clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne,
                             cdelay, nsps, nsim, filename)
     clvGinelliLongBackwards(filename, keepCLVWarmup)
-    lypspecCLV = lyapunovSpectrumCLV(filename) # , nsim)
+    lypspecCLV = lyapunovSpectrumCLV(filename, saverunavg=true) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
     end
@@ -721,6 +761,52 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
     return lypspecGS
 end
 export lyapunovSpectrumGSMap
+
+"""
+lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps)
+
+Returns the Lyapunov Spectrum using the Gram-Schmidt Method for computing the
+exponents. Returns the running average spectrum along with the lattice dynamics.
+
+"""
+function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps)
+    # initialize local variables
+    ht = length(x0)
+    lattice = copy(x0)
+    lypspecGS = zeros(ne) # will contain lyapunov spectrum to be returned
+    delta = zeros(ht, ne) # matrix of the number of exponents (ne) to determine
+    # initializes CLVs to orthonormal set of vectors
+    for i=1:ne
+      delta[i, i] = 1;
+    end
+
+    # the number of total steps for the system is the number of samples (ns)
+    # times the number of steps per sample (nsps)
+    numsteps = ns*nsps
+    # warm up the lattice (x0) and perturbations (delta)
+    @showprogress 10 "Delay Completed " for i in 1:delay
+        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        # timestep(lattice)
+    end
+    println("lattice warmed up, starting GSV evolution.")
+    # calculate Lyapunov Spectrum for the given number samples (ns) and
+    # given spacing (nsps)
+    x = zeros(ht, ns);
+    lypspecGS = zeros(ne, ns);
+    lsGSravg = zeros(ne);
+    @showprogress 10 "Sample Calculations Completed " for i=1:ns
+    # for i=1:ns
+        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        lsGSravg += log.(diag(r))
+        lypspecGS[:, i] = lsGSravg/(i*nsps);
+        x[:, i] = x0;
+    end
+    println("the GSV Lyapunov Spectrum is:")
+    println(lypspecGS[:, end])
+    # finished evolution of lattice
+    return x, lypspecGS
+end
+export lyapunovSpectrumGSMapDynamics
 #-----------------------------------------------------------------------------#
 # dynamical systems functions
 
@@ -789,14 +875,23 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
 end
 
 """
-  DOS(datafile::String, windows)
+  DOS(datafile::String, windows; ts=0)
 Determines the Domination of Osledet Splitting based on recorded C and R matrices.
 """
-function DOS(datafile::String, windows)
+function DOS(datafile::String, windows; ts=0)
     fid = h5open(datafile, "r")
     rH = fid["r"];
     cH = fid["c"];
-    ns = size(rH, 3);
+    if ts == 0
+        # default is to use all data points from sampling
+        ns = size(rH, 3);
+        ts = 1:ns-1;
+    else
+        # set number of samples as the length of specified ts
+        # presumes ts is sequential timesteps
+        ns = length(ts);
+        ts = ts[1]:ts[end-1]
+    end
     ne = size(cH, 1);
     nu = zeros(ne, ne);
     nuDict = Dict();
@@ -806,9 +901,9 @@ function DOS(datafile::String, windows)
     mktemp() do path, io
         fid = h5open(path, "w")
         growth = create_dataset(fid, "growth", datatype(Float64), dataspace(ne, ns))
-        @showprogress 10 "Instant Growths " for i = 1:ns-1
-            C1 = reshape(cH[:, :, i], (ne, ne));
-            R2 = reshape(rH[:, :, i+1], (ne, ne));
+        @showprogress 10 "Instant Growths " for (i, t) in enumerate(ts)
+            C1 = reshape(cH[:, :, t], (ne, ne));
+            R2 = reshape(rH[:, :, t+1], (ne, ne));
             fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
         end
         for window in windows

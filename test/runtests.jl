@@ -144,7 +144,7 @@ yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapuno
 nsim = 25 # 50 # 10;
 datafile = "testTentMap2.h5"
 keepCLVWarmup = true;
-covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile, keepCLVWarmup)
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile; keepCLVWarmup=keepCLVWarmup)
 lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
 cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
 fid = h5open(datafile, "r")
