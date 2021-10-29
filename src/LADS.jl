@@ -763,22 +763,18 @@ end
 export lyapunovSpectrumGSMap
 
 """
-lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps)
+lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps, delta0)
 
 Returns the Lyapunov Spectrum using the Gram-Schmidt Method for computing the
 exponents. Returns the running average spectrum along with the lattice dynamics.
 
 """
-function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps)
+function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps, delta0=Matrix(1.0I, length(x0), ne); saverunavg=false)
     # initialize local variables
     ht = length(x0)
     lattice = copy(x0)
     lypspecGS = zeros(ne) # will contain lyapunov spectrum to be returned
-    delta = zeros(ht, ne) # matrix of the number of exponents (ne) to determine
-    # initializes CLVs to orthonormal set of vectors
-    for i=1:ne
-      delta[i, i] = 1;
-    end
+    delta = copy(delta0)
 
     # the number of total steps for the system is the number of samples (ns)
     # times the number of steps per sample (nsps)
@@ -791,20 +787,36 @@ function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps
     println("lattice warmed up, starting GSV evolution.")
     # calculate Lyapunov Spectrum for the given number samples (ns) and
     # given spacing (nsps)
-    x = zeros(ht, ns);
-    lypspecGS = zeros(ne, ns);
-    lsGSravg = zeros(ne);
-    @showprogress 10 "Sample Calculations Completed " for i=1:ns
-    # for i=1:ns
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
-        lsGSravg += log.(diag(r))
-        lypspecGS[:, i] = lsGSravg/(i*nsps);
-        x[:, i] = x0;
+    if saverunavg
+        x = zeros(ht, ns);
+        lypspecGS = zeros(ne, ns);
+        lsGSravg = zeros(ne);
+        @showprogress 10 "Sample Calculations Completed " for i=1:ns
+        # for i=1:ns
+            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            lsGSravg += log.(diag(r))
+            lypspecGS[:, i] = lsGSravg/(i*nsps);
+            x[:, i] = x0;
+        end
+        println("the GSV Lyapunov Spectrum is:")
+        println(lypspecGS[:, end])
+    else
+        x = copy(x0);
+        # lypspecGS = zeros(ne);
+        lsGSravg = zeros(ne);
+        @showprogress 10 "Sample Calculations Completed " for i=1:ns
+        # for i=1:ns
+            x, v, delta, r = advanceQRMap(map, jacobian, x, delta, p, nsps)
+            lsGSravg += log.(diag(r))
+            # lypspecGS[:, i] = lsGSravg/(i*nsps);
+            # x[:, i] = x0;
+        end
+        lypspecGS = lsGSravg/(nsps*ns);
+        println("the GSV Lyapunov Spectrum is:")
+        println(lypspecGS)
     end
-    println("the GSV Lyapunov Spectrum is:")
-    println(lypspecGS[:, end])
     # finished evolution of lattice
-    return x, lypspecGS
+    return x, lypspecGS, delta
 end
 export lyapunovSpectrumGSMapDynamics
 #-----------------------------------------------------------------------------#
