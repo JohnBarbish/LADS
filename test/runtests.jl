@@ -10,6 +10,7 @@ seed!(1234);
 include("maps_flows_jacobians_test.jl")
 include("maps_flows_jacobians_2d_test.jl")
 include("angle_analysis_test.jl")
+include("clv_test.jl")
 #------------------------------------------------------------------------------
 # unit test for zeroIndex function
 a = rand(100);
