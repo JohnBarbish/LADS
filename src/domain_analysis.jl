@@ -49,3 +49,22 @@ function suminband(N, lb, ub, sum)
     return x
 end
 export suminband
+
+"""
+  pspec(s; dim=1, rms=false)
+  returns the wavenumber distribution along with the power spectrum for the input
+  signal array s. Calculates power spectrum along dimension "dim".
+  - dim : calculates spectrum along specified dimensions
+  - rms : takes square root of spectrum
+"""
+function pspec(s; dim=1, rms=false)
+   N = size(s, dim);
+   shat = rfft(s, dim)/N; # normalized with length of sample
+   psdx = abs2.(shat);
+   krng = 0:Int(floor(N/2)); # using floor for odd cases
+   if rms
+    psdx = sqrt.(psdx); # rms of pspec
+   end
+   return krng, psdx
+end
+export pspec

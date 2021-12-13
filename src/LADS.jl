@@ -4,7 +4,7 @@ using Statistics, Random, LinearAlgebra
 import JLD: jldopen, read, close
 using HDF5, ProgressMeter, FFTW
 # We make the follow definitions for notation
-# Maps  - descrete time
+# Maps  - discrete time
 # Flows - continuous time
 
 
