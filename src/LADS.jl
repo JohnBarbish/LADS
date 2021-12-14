@@ -301,7 +301,8 @@ function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, ns
         rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
         cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
     else
-        tmpfile = joinpath(tempdir(), "warmupdata.h5");
+        wd = dirname(filename);
+        tmpfile = joinpath(wd, "warmupdata.h5");
         fidtmp = h5open(tmpfile, "w");
         rwH = create_dataset(fidtmp, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
         cwH = create_dataset(fidtmp, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
@@ -470,7 +471,8 @@ function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps,
         rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
         cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
     else
-        tmpfile = joinpath(tempdir(), "warmupdata.h5");
+        wd = dirname(filename);
+        tmpfile = joinpath(wd, "warmupdata.h5");
         fidtmp = h5open(tmpfile, "w");
         rwH = create_dataset(fidtmp, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
         cwH = create_dataset(fidtmp, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
