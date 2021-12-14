@@ -282,7 +282,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
 end
 
 # using HDF5
-function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, filename; keepCLVWarmup=false)
     fid = h5open(filename, "w");
     # initialize local variables
     ht = length(x0)
@@ -296,8 +296,16 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
  #     jH = create_dataset(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
     yH = create_dataset(fid, "y", datatype(Float64), dataspace(ht, ns))
-    rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
-    cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    # stores CLV warmup data in file if we want to, otherwise uses temporary space
+    if keepCLVWarmup
+        rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+        cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    else
+        tmpfile = joinpath(tempdir(), "warmupdata.h5");
+        fidtmp = h5open(tmpfile, "w");
+        rwH = create_dataset(fidtmp, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+        cwH = create_dataset(fidtmp, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    end
     λH = create_dataset(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
     # store parameters of the run
     fid["parameters"] = p;
@@ -377,10 +385,73 @@ function clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, n
     fid["lypGS"] = lypspecGS;
     # return results of forward component of Ginelli's method for CLV computation
     # return yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst
+    
+    # initialize items for backward evolution
+    # warm up C vectors with backward transient Rw matrices
+    Cw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
+    # RS = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
+    C = Matrix(1.0I, ne, ne);
+    # C0 = copy(C1); # zeros(ne, ne);
+    # cwH[:,:, end] = C1;
+    # CS[:, :, end] = C1;
+    # warms up C matrix
+    @showprogress 10 "Warmup Completion " for i = cdelayResets:-1:1
+        # read values from dataset
+        trng = range((i-1)*nsim+1, length=nsim)
+        # println("Warmup Completion:\t $(round((cdelayResets-i)/cdelayResets*100))%,\t Range:\t $trng")
+        Rw = rwH[:, :, trng];
+        # sets IC of CS
+        Cw[:, :, end] = C;
+        for j=nsim-1:-1:1
+            C = backwardsRC(C, Rw[:, :, j+1]);
+            Cw[:, :, j] = C;
+        end
+        # assign final value and prepare for next set of data
+        # Cw[:, :, 1] = C;
+        C = backwardsRC(C, Rw[:, :, 1])
+        # assign values to dataset
+        cwH[:, :, trng] = Cw;
+    end
+
+    println("Warmup Completion:\t 100%")
+    # assign C from last warm up data to first recorded data
+    # C1 = C;
+    cH[:, :, end] = C
+    println("set IC for calculating V.")
+    # Resize Cw and Rw arrays for datarecording
+    # Cw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
+    # #Rw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
+    # C1 = Matrix(1.0I, ne, ne);
+    # C0 = zeros(ne, ne);
+    # cwH[:,:, end] = C1;
+    @showprogress 10 "Sample Completion " for i = nsResets:(-1):1
+        # read values from dataset
+        trng = range((i-1)*nsim+1, length=nsim)
+        # println("Completion:\t $(round((nsResets-i)/nsResets*100))%,\t Range:\t $trng")
+        RS = rH[:, :, trng];
+        Cw[:, :, end] = C;
+        for j=nsim-1:-1:1
+            C = backwardsRC(C, RS[:, :, j+1]);
+            Cw[:, :, j] = C;
+        end
+        # assign final value and prepare for next set of data
+        # Cw[:, :, 1] = C;
+        C = backwardsRC(C, RS[:, :, 1])
+        # assign values to dataset
+        cH[:, :, trng] = Cw;
+    end
+    # closes temporary file and deletes it if necessary.
+    if !keepCLVWarmup
+        close(fidtmp);
+        rm(tmpfile);
+    end
+    # close file
     close(fid)
+    # return results of backward component of Ginelli's method for CLV computation
+    # return CS, Cw
 end
 
-function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps, nsim, filename)
+function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps, nsim, filename; keepCLVWarmup=false)
     fid = h5open(filename, "w");
     # initialize local variables
     ht = length(x0)
@@ -394,8 +465,16 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
  #     jH = create_dataset(fid, "J", datatype(Float64), dataspace(ht, ht, ns),
  #                      "chunk", (ht, ht, nsrs))
     yH = create_dataset(fid, "y", datatype(Float64), dataspace(ht, ns))
-    rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
-    cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    # stores CLV warmup data in file if we want to, otherwise uses temporary space
+    if keepCLVWarmup
+        rwH = create_dataset(fid, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+        cwH = create_dataset(fid, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    else
+        tmpfile = joinpath(tempdir(), "warmupdata.h5");
+        fidtmp = h5open(tmpfile, "w");
+        rwH = create_dataset(fidtmp, "rw", datatype(Float64), dataspace(ne, ne, cdelay))
+        cwH = create_dataset(fidtmp, "cw", datatype(Float64), dataspace(ne, ne, cdelay))
+    end
     λH = create_dataset(fid, "lambdaInst", datatype(Float64), dataspace(ne, delay))
     # store parameters of the run
     fid["parameters"] = p;
@@ -476,34 +555,14 @@ function clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay
     fid["lypGS"] = lypspecGS;
     # return results of forward component of Ginelli's method for CLV computation
     # return yS, QS, RS, Rw, lypspecGS, Qw, lambdaInst
-    close(fid)
-end
+    
 
-function clvGinelliLongBackwards(datafile, keepCLVWarmup)
+
     # initialize items for backward evolution
-    fid = h5open(datafile, "r+")
-    nsim = read(fid["nsim"]);
-    println("nsim in file is: ", nsim)
-    delay = read(fid["delay"]);
-    ns = read(fid["ns"]);
-    cdelay = read(fid["cdelay"]);
-    # create local variables for reading and writing into batches
-    delayResets = Int(delay/nsim)
-    nsResets = Int(ns/nsim)
-    cdelayResets = Int(cdelay/nsim)
-    # create handles to data stored in file
-    qH = fid["q"]; rH = fid["r"]; yH = fid["y"]; cH = fid["c"];
-    rwH = fid["rw"]; cwH = fid["cw"];
-    ht = size(yH, 1); ne = size(rH, 1); ns = size(qH, 3);
-    # CS = zeros(ne, ne, ns);
-    # cdelay = size(rwH, 3);
     # warm up C vectors with backward transient Rw matrices
     Cw = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
     # RS = zeros(ne, ne, nsim); # zeros(ne, ne, cdelay);
     C = Matrix(1.0I, ne, ne);
-    # C0 = copy(C1); # zeros(ne, ne);
-    # cwH[:,:, end] = C1;
-    # CS[:, :, end] = C1;
     # warms up C matrix
     @showprogress 10 "Warmup Completion " for i = cdelayResets:-1:1
         # read values from dataset
@@ -550,11 +609,10 @@ function clvGinelliLongBackwards(datafile, keepCLVWarmup)
         # assign values to dataset
         cH[:, :, trng] = Cw;
     end
-    # implementing lazy delete, could revise data storage to more efficiently
-    # overwrite variables instead of creating new ones
+    # closes temporary file and deletes it if necessary.
     if !keepCLVWarmup
-        delete_object(fid, "rw")
-        delete_object(fid, "cw")
+        close(fidtmp);
+        rm(tmpfile);
     end
     # close file
     close(fid)
@@ -565,9 +623,8 @@ end
 function covariantLyapunovVectorsMap(map, jacobian, p, x0, delay::Int64,
             ns::Int64, ne::Int64, cdelay::Int64, nsps::Int64, nsim::Int64,
             filename; keepCLVWarmup=false, saverunavg=false)
-    clvGinelliLongMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
-                                nsim, filename)
-    clvGinelliLongBackwards(filename, keepCLVWarmup)
+    clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps,
+                                nsim, filename, keepCLVWarmup=keepCLVWarmup)
     lypspecCLV = lyapunovSpectrumCLVMap(filename, saverunavg=saverunavg) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
@@ -607,9 +664,8 @@ end
 
 function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
                                   cdelay, nsps, nsim::Int64, filename, keepCLVWarmup=false)
-    clvGinelliLongForward(flow, jacobian, p, δt, x0, delay, ns, ne,
-                            cdelay, nsps, nsim, filename)
-    clvGinelliLongBackwards(filename, keepCLVWarmup)
+    clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne,
+                            cdelay, nsps, nsim, filename, keepCLVWarmup)
     lypspecCLV = lyapunovSpectrumCLV(filename, saverunavg=true) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
