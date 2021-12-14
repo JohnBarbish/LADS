@@ -665,7 +665,7 @@ end
 function covariantLyapunovVectors(flow, jacobian, p, δt, x0, delay, ns, ne,
                                   cdelay, nsps, nsim::Int64, filename, keepCLVWarmup=false)
     clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne,
-                            cdelay, nsps, nsim, filename, keepCLVWarmup)
+                            cdelay, nsps, nsim, filename, keepCLVWarmup=keepCLVWarmup)
     lypspecCLV = lyapunovSpectrumCLV(filename, saverunavg=true) # , nsim)
     h5open(filename, "r+") do fid
         write(fid, "lypspecCLV", lypspecCLV)
