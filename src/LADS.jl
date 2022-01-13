@@ -48,9 +48,6 @@ end
 # functions useful for calculating CLVs for flows
 
 function advanceQRMap(map, jacobian, x0, delta, p, nsps)
-    ht = length(x0);
-    v = zeros(ht);
-    x00 = x0;
     for i=1:nsps
         # xn = map(x0, p);
         J = jacobian(x0, p);
@@ -58,13 +55,12 @@ function advanceQRMap(map, jacobian, x0, delta, p, nsps)
         delta = J*delta
         x0 = map(x0, p); # v*δt + x0
     end
-    v = (x0 - x00)/(nsps) # estimate on velocity?
     q, r = qr(delta)
     sgn = Matrix(Diagonal(sign.(diag(r))))
     r = sgn*r
     delta = q*sgn
 
-    return x0, v, delta, r
+    return x0, delta, r
 end
 
 function backwardsRC(C1, R1)
@@ -240,7 +236,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
     @showprogress 10 "Delay Completed " for i=1:delay
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps)
     end
     # println(delta)
@@ -250,14 +246,12 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     J = Matrix(1.0I, ht, ht)
     # evolve delta and lattice by numsteps in forward direction
     yS = zeros(ht, ns);
-    vn = zeros(ht, ns);
     RS = zeros(ne, ne, ns);
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:ns
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         yS[:, i] = x0;
-        vn[:, i] = v/norm(v);
         RS[:, :, i] = r
         QS[:, :, i] = delta
         lypspecGS += log.(diag(r))/(ns*nsps)
@@ -268,7 +262,7 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     Qw = zeros(ht, ne, cdelay);
     @showprogress 10 "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         Rw[:, :, i] = r
         Qw[:, :, i] = delta
     end
@@ -330,7 +324,7 @@ function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, ns
     λi = zeros(ne, nsim) # zeros(ne, delayResets)
     @showprogress 10 "Delay Completed " for i=1:delayResets
         for j=1:nsim
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             λi[:, j] = log.(diag(r))/(nsps)
         end
         λH[:, range((i-1)*nsim+1, length=nsim)] = λi
@@ -348,7 +342,7 @@ function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, ns
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             yS[:, j] = x0;
             RS[:, :, j] = r
             QS[:, :, j] = delta
@@ -367,7 +361,7 @@ function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, ns
     Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
     @showprogress 10 "Forward Warmup Completed " for i=1:cdelayResets
         for j=1:nsim
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             RS[:, :, j] = r
             Qw[:, :, j] = delta
         end
@@ -500,7 +494,7 @@ function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps,
     λi = zeros(ne, nsim) # zeros(ne, delayResets)
     @showprogress 10 "Delay Completed " for i=1:delayResets
         for j=1:nsim
-            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
             λi[:, j] = log.(diag(r))/(nsps*δt)
         end
         λH[:, range((i-1)*nsim+1, length=nsim)] = λi
@@ -518,7 +512,7 @@ function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps,
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
-            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
             yS[:, j] = x0;
             RS[:, :, j] = r
             QS[:, :, j] = delta
@@ -537,7 +531,7 @@ function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps,
     Qw = zeros(ht, ne, nsim); # zeros(ht, ne, cdelay);
     @showprogress 10 "Forward Warmup Completed " for i=1:cdelayResets
         for j=1:nsim
-            x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+            x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
             RS[:, :, j] = r
             Qw[:, :, j] = delta
         end
@@ -676,7 +670,6 @@ end
 export covariantLyapunovVectors
 function advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
     ht = length(x0);
-    v = zeros(ht);
     for i=1:nsps
         v = flow(x0, p);
         J = jacobian(x0, p);
@@ -689,7 +682,7 @@ function advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
     r = sgn*r
     delta = q*sgn
 
-    return x0, v, delta, r
+    return x0, delta, r
 end
 
 function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps)
@@ -707,7 +700,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     # x0 = fd1(flow, x0, p, δt, delay)
     lambdaInst = zeros(ne, delay)
     @showprogress 10 "Delay Completed " for i=1:delay
-        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         lambdaInst[:, i] = log.(diag(r))/(nsps*δt)
     end
     # println(delta)
@@ -722,7 +715,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:ns
-        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         yS[:, i] = x0;
         RS[:, :, i] = r
         QS[:, :, i] = delta
@@ -734,7 +727,7 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     Qw = zeros(ht, ne, cdelay);
     @showprogress 10 "Forward Warmup Completed " for i=1:cdelay
         # advance delta and x0 by δt
-        x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
+        x0, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
         Rw[:, :, i] = r
         Qw[:, :, i] = delta
     end
@@ -787,7 +780,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
     numsteps = ns*nsps
     # warm up the lattice (x0) and perturbations (delta)
     @showprogress 10 "Delay Completed " for i in 1:delay
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         # timestep(lattice)
     end
     println("lattice warmed up, starting GSV evolution.")
@@ -798,7 +791,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
         lsGSravg = zeros(ne)
         @showprogress 10 "Sample Calculations Completed " for i=1:ns
         # for i=1:ns
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             lsGSravg += log.(diag(r))
             lypspecGS[:, i] = lsGSravg/(i*nsps)
         end
@@ -806,7 +799,7 @@ function lyapunovSpectrumGSMap(map, jacobian, p, x0, delay, ns, ne, nsps; saveru
         println(lypspecGS[:, end])
     else
         @showprogress 10 "Sample Calculations Completed " for i=1:ns
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             lypspecGS += log.(diag(r))/(ns*nsps)
         end
         println("the GSV Lyapunov Spectrum is:")
@@ -836,7 +829,7 @@ function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps
     # numsteps = ns*nsps
     # warm up the lattice (x0) and perturbations (delta)
     @showprogress 10 "Delay Completed " for i in 1:delay
-        x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
         # timestep(lattice)
     end
     println("lattice warmed up, starting GSV evolution.")
@@ -855,7 +848,7 @@ function lyapunovSpectrumGSMapDynamics(map, jacobian, p, x0, delay, ns, ne, nsps
     x[:, 1] = x0;
     @showprogress 10 "Sample Calculations Completed " for (ind, nstep) in enumerate(diff(tsteps))
         for i in 1:nstep
-            x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+            x0, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
             lsGSravg += log.(diag(r))
         end
         lypspecGS[:, ind+1] = lsGSravg/(tcum[ind]*nsps);
