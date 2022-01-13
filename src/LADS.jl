@@ -255,8 +255,8 @@ function clvGinelliMapForward(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps)
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:ns
-        yS[:, i] = x0;
         x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
+        yS[:, i] = x0;
         vn[:, i] = v/norm(v);
         RS[:, :, i] = r
         QS[:, :, i] = delta
@@ -348,9 +348,8 @@ function clvGinelliLongMap(map, jacobian, p, x0, delay, ns, ne, cdelay, nsps, ns
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
-            yS[:, j] = x0;
             x0, v, delta, r = advanceQRMap(map, jacobian, x0, delta, p, nsps)
-            # vn[:, j] = v/norm(v);
+            yS[:, j] = x0;
             RS[:, :, j] = r
             QS[:, :, j] = delta
             lypspecGS += log.(diag(r))/(ns*nsps)
@@ -519,9 +518,8 @@ function clvGinelliLong(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, nsps,
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:nsResets
         for j=1:nsim
-            yS[:, j] = x0;
             x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
-            # vn[:, j] = v/norm(v);
+            yS[:, j] = x0;
             RS[:, :, j] = r
             QS[:, :, j] = delta
             lypspecGS += log.(diag(r))/(ns*nsps*δt)
@@ -724,9 +722,8 @@ function clvGinelliForward(flow, jacobian, p, δt, x0, delay, ns, ne, cdelay, ns
     QS = zeros(ht, ne, ns);
     lypspecGS = zeros(ne)
     @showprogress 10 "Sample Calculations Completed " for i=1:ns
-        yS[:, i] = x0;
         x0, v, delta, r = advanceQR(flow, jacobian, x0, delta, p, δt, nsps)
-        vn[:, i] = v/norm(v);
+        yS[:, i] = x0;
         RS[:, :, i] = r
         QS[:, :, i] = delta
         lypspecGS += log.(diag(r))/(ns*nsps*δt)
