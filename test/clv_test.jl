@@ -24,14 +24,13 @@ ns = Int(tSample/(nsps));
 ht = length(x0);
 ##------------------------------------------------------------------------------
 ##Code for testing long time function
-(yS, QS, RS, CS, lypspecGS,
-lypspecCLV, Qw, Cw, lambdaInst, Rw) = covariantLyapunovVectorsMap(LADS.tentCMap,
+(yS, VS, lypspecGS, lypspecCLV, lambdaInst) = covariantLyapunovVectorsMap(LADS.tentCMap,
                         LADS.tentCJacobian, p, x0, delay, ns, ne, cdelay, nsps)
 # check all the results
 # check R matrix
-@test all(mapslices(i->isapprox(abs.(i), mu*Matrix(1.0I, L, ne)), RS, dims=(1, 2)))
-# check Q matrix
-@test all(mapslices(i->isapprox(abs.(i), Matrix(1.0I, L, ne)), QS, dims=(1, 2)))
+# @test all(mapslices(i->isapprox(abs.(i), mu*Matrix(1.0I, L, ne)), RS, dims=(1, 2)))
+# check V matrix
+@test all(mapslices(i->isapprox(abs.(i), Matrix(1.0I, L, ne)), VS, dims=(1, 2)))
 # check Lyapunov spectra
 @test all(i -> isapprox(i, log(mu)), lypspecCLV)
 @test all(i -> isapprox(i, log(mu)), lypspecGS)

@@ -97,31 +97,26 @@ xc, yc = remove_zero_datapoints(x, y)
     ht = length(x0);
     ##------------------------------------------------------------------------------
     ##Code for testing long time function
-    (yS, QS, RS, CS, lypspecGS,
-    lypspecCLV, Qw, Cw, lambdaInst, Rw) = covariantLyapunovVectorsMap(simpleMap,
+    (yS, VS, lypspecGS, lypspecCLV, lambdaInst) = covariantLyapunovVectorsMap(simpleMap,
                             simpleJacobian, p, x0, delay, ns, ne, cdelay, nsps)
 
     # sanity check: lyapunov spectrum
-    @test isapprox(log.(diag(RS[:, :, 1])), lypspecGS);
+    # @test isapprox(log.(diag(RS[:, :, 1])), lypspecGS);
     @test isapprox(log.([p1, p2, p3]), lypspecGS);
     @test isapprox(lypspecCLV, lypspecGS);
     # check all Q's are eigenvectors (identity matrix)
-    goodQS = true; goodRS = true; goodCS = true; goodlambdaInst = true;
+    # goodQS = true; goodRS = true; goodCS = true; goodlambdaInst = true;
+    goodVS = true; goodlambdaInst = true;
     for t=1:ns
-        if !isapprox(QS[:, :, t], Matrix(1.0I, ne, ne))
-            goodQS = false
-        end
-        if !isapprox(CS[:, :, t], Matrix(1.0I, ne, ne))
-            goodCS = false
-        end
-        if !isapprox(diag(RS[:, :, t]), [p1, p2, p3])
-            goodRS = false
+        if !isapprox(VS[:, :, t], Matrix(1.0I, ne, ne))
+            goodVS = false
         end
         if !isapprox(lambdaInst[:, t], lypspecGS)
             goodlambdaInst = false
         end
     end
-    @test goodQS; @test goodRS; @test goodCS; @test goodlambdaInst;
+    # @test goodQS; @test goodRS; @test goodCS; @test goodlambdaInst;
+    @test goodVS; @test goodlambdaInst;
 end
 
 @testset "CLV function in/out memory" begin
@@ -141,35 +136,41 @@ tSample = 100;
 ns = Int(tSample/(nsps));
 
 ht = length(x0);
-yS, QS, RS, CS, lypspecGS, lypspecCLV, Qw, Cw, lambdaInst, Rw = covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps)
+yS, VS, lypGS, lypCLV, lambdaInst = covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps)
 
 nsim = 25 # 50 # 10;
 datafile = "testTentMap2.h5"
 keepCLVWarmup = true;
-covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile; keepCLVWarmup=keepCLVWarmup)
-lypFile = zeros(ne); cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
-cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
+covariantLyapunovVectorsMap(tentMap, tentJacobian, p, x0, delay, ns, ne, cdelay, nsps, nsim, datafile)
+lypclvFile = zeros(ne); 
+# cFile = zeros(ne, ne, ns); rFile = zeros(ne, ne, ns);
+# cwFile = zeros(ne, ne, cdelay); rwFile = zeros(ht, ne, cdelay);
 fid = h5open(datafile, "r")
 # global lypFile, cFile, rFile, cwFile, rwFile
-lypFile = read(fid["lypspecCLV"])
-cFile = read(fid, "c")
-rFile = read(fid, "r")
-cwFile = read(fid, "cw")
-rwFile = read(fid, "rw")
+lypclvFile = read(fid["lypCLV"])
+lypgsFile = read(fid["lypGS"])
+vFile = read(fid, "v")
+# cFile = read(fid, "c")
+# rFile = read(fid, "r")
+# cwFile = read(fid, "cw")
+# rwFile = read(fid, "rw")
 # end
 close(fid)
-println("Error between in memory and file code versions is: ", norm(lypFile - lypspecCLV))
+println("Error between in memory and file code versions is: ", norm(lypgsFile - lypGS))
 
-println("Error in C matchup: \t", norm(CS - cFile))
-println("Error in R matchup: \t", norm(RS - rFile))
-println("Error in Cw matchup: \t", norm(Cw - cwFile))
-println("Error in Rw matchup: \t", norm(Rw - rwFile))
+println("Error in V matchup: \t", norm(VS - vFile))
+# println("Error in C matchup: \t", norm(CS - cFile))
+# println("Error in R matchup: \t", norm(RS - rFile))
+# println("Error in Cw matchup: \t", norm(Cw - cwFile))
+# println("Error in Rw matchup: \t", norm(Rw - rwFile))
 
-@test norm(lypspecCLV-lypFile) == 0
-@test norm(CS-cFile) == 0
-@test norm(RS-rFile) == 0
-@test norm(Cw-cwFile) == 0
-@test norm(Rw-rwFile) == 0
+@test norm(lypCLV-lypclvFile) == 0
+@test norm(lypGS-lypgsFile) == 0
+@test norm(VS-vFile) == 0
+# @test norm(CS-cFile) == 0
+# @test norm(RS-rFile) == 0
+# @test norm(Cw-cwFile) == 0
+# @test norm(Rw-rwFile) == 0
 # remove data file
 rm(datafile)
 end
