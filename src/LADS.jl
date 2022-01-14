@@ -1322,7 +1322,7 @@ function multiMinimumManifoldAngle(datafile::String, rng)
     # initializes theta matrix to contain the mimimum angle
     fid = h5open(datafile, "r")
     # rH = fid["r"];
-    cH = fid["c"];
+    cH = fid["v"];
     ns = size(cH, 3);
     ne = size(cH, 1);
     ntheta = length(rng);
@@ -1339,41 +1339,41 @@ function multiMinimumManifoldAngle(datafile::String, rng)
 end
 
 export multiMinimumManifoldAngle
-"""
-    clvfromQR(datafile, storefile)
+# """
+#     clvfromQR(datafile, storefile)
 
-    Calculates the CLVs from Q & R in datafile and stores CLVs ining in another file
-"""
-function clvfromQR(datafile, storefile)
-    # open up read file for data
-    h5open(datafile, "r") do fid
-        cH = fid["c"]; qH = fid["q"];
-        ht = size(qH, 1);
-        ns = size(cH, 3);
-        ne = size(cH, 1);
-        # open write file for clv data
-        fidw = h5open(storefile, "w")
-        vH = d_create(fidw, "v",datatype(Float64), dataspace(ht, ne, ns));
-        clv_loc = zeros(ne);
-        @showprogress 10 "Calculating CLVs" for i = 1:ns
-            Ci = cH[:, :, i];
-            Qi = qH[:, :, i];
-            Ci = reshape(Ci, (ne, ne));
-            Qi = reshape(Qi, (ht, ne));
-            # calculate and store clv at each timestep
-            Vi = Qi*Ci;
-            vH[:, :, i] = Vi;
-            # running total of localization
-            clv_loc += [localization(Vi[i, :]) for i in 1:ne];
-        end
-        # average CLV localization and stored
-        clv_loc /= ns;
-        fidw["clv_localization"] = clv_loc;
-        close(fidw);
-    end
-end
+#     Calculates the CLVs from Q & R in datafile and stores CLVs ining in another file
+# """
+# function clvfromQR(datafile, storefile)
+#     # open up read file for data
+#     h5open(datafile, "r") do fid
+#         cH = fid["c"]; qH = fid["q"];
+#         ht = size(qH, 1);
+#         ns = size(cH, 3);
+#         ne = size(cH, 1);
+#         # open write file for clv data
+#         fidw = h5open(storefile, "w")
+#         vH = d_create(fidw, "v",datatype(Float64), dataspace(ht, ne, ns));
+#         clv_loc = zeros(ne);
+#         @showprogress 10 "Calculating CLVs" for i = 1:ns
+#             Ci = cH[:, :, i];
+#             Qi = qH[:, :, i];
+#             Ci = reshape(Ci, (ne, ne));
+#             Qi = reshape(Qi, (ht, ne));
+#             # calculate and store clv at each timestep
+#             Vi = Qi*Ci;
+#             vH[:, :, i] = Vi;
+#             # running total of localization
+#             clv_loc += [localization(Vi[i, :]) for i in 1:ne];
+#         end
+#         # average CLV localization and stored
+#         clv_loc /= ns;
+#         fidw["clv_localization"] = clv_loc;
+#         close(fidw);
+#     end
+# end
 
-export clvfromQR
+# export clvfromQR
 
 """
     localization(v, normalized=true)
