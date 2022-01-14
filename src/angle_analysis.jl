@@ -146,7 +146,7 @@ end
 """
 function allAngles(C::Array{Float64, 3}, normalized=true)
     ns = size(C, 3);
-    data = zeros(size(C));
+    data = zeros((size(C, 2), size(C, 2), ns));
     for t = 1:ns
         data[:, :, t] = allAngles(C[:, :, t], normalized)
     end
@@ -211,8 +211,8 @@ end
 function allAngleDistribution(datafile::String, normalized, nsim::Int64,
 theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Float64}}=range(0, stop=pi, length=100))
     fid = h5open(datafile, "r");
-    cH = fid["c"];
-    ne = size(cH, 1); ns = size(cH, 3);
+    vH = fid["v"];
+    ne = size(vH, 2); ns = size(vH, 3);
     mn, mx, nbins = theta[1], theta[end], length(theta);
     nsResets = Int(ns/nsim);
     data = zeros(ne, ne, nbins);
@@ -220,7 +220,7 @@ theta::StepRangeLen{Float64,Base.TwicePrecision{Float64},Base.TwicePrecision{Flo
     boxWidth = (mx - mn)/nbins
     @showprogress "Calculating Angles " for t = 1:nsResets
         trng = range((t-1)*nsim+1, length=nsim)
-        data = allAngles(cH[:, :, trng], normalized)
+        data = allAngles(vH[:, :, trng], normalized)
         for i=1:ne
             for j=1:ne
                 count[i, j, :] += pdf(data[i, j, :], theta)*nsim*boxWidth

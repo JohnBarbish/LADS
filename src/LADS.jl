@@ -906,16 +906,15 @@ export kyd
 #-----------------------------------------------------------------------------#
 # functions useful for calculating Domination of Osledet Splitting
 """
-  DOS(datafile::String, window::Int64)
-Determines the Domination of Osledet Splitting based on recorded C and R matrices.
+  DOS(jacobian, datafile::String, window::Int64)
+Determines the Domination of Osledet Splitting based on jacobian and recorded CLVs.
 """
-function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
+function DOS(jacobian, datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
     # HDF5 type currently, need to fix
     fid = h5open(datafile, "r")
-    rH = fid["r"];
-    cH = fid["c"];
-    ns = size(rH, 3);
-    ne = size(cH, 1);
+    vH = fid["v"]; yH = fid["y"]; p = fid["p"][:];
+    ns = size(vH, 3);
+    ne = size(vH, 2);
     nu = zeros(ne, ne);
     nutemp = zeros(ne, ne);
     CLV_growth = zeros(ne);
@@ -924,9 +923,8 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
         # added for loop to go have the instantaneous CLV growth averaged over window
         CLV_growth = zeros(ne);
         for j=0:window-1
-            C1 = reshape(cH[:, :, i+j], (ne, ne));
-            R2 = reshape(rH[:, :, i+1+j], (ne, ne));
-            CLV_growth += LADS.clvInstantGrowth(C1, R2);
+            v1 = vH[:, :, i+j]; y1 = yH[:, i+j];
+            CLV_growth += clvInstantGrowth(jacobian, y1, p, v1);
         end
         CLV_growth /= window;
         nutemp = dosViolations(CLV_growth)
@@ -938,16 +936,16 @@ function DOS(datafile::String, window::Int64) # ::HDF5.HDF5File) problem with
 end
 
 """
-  DOS(datafile::String, windows; ts=0)
-Determines the Domination of Osledet Splitting based on recorded C and R matrices.
+  DOS(jacobian, datafile::String, windows; ts=0)
+Determines the Domination of Osledet Splitting based on jacobian and recorded CLVs.
 """
-function DOS(datafile::String, windows; ts=0)
+function DOS(jacobian, datafile::String, windows; ts=0)
+    p = h5read(datafile, "p")
     fid = h5open(datafile, "r")
-    rH = fid["r"];
-    cH = fid["c"];
+    vH = fid["v"]; yH = fid["y"];
     if ts == 0
         # default is to use all data points from sampling
-        ns = size(rH, 3);
+        ns = size(vH, 3);
         ts = 1:ns-1;
     else
         # set number of samples as the length of specified ts
@@ -955,7 +953,7 @@ function DOS(datafile::String, windows; ts=0)
         ns = length(ts);
         ts = ts[1]:ts[end-1]
     end
-    ne = size(cH, 1);
+    ne = size(vH, 2);
     nu = zeros(ne, ne);
     nuDict = Dict();
     nutemp = zeros(ne, ne);
@@ -965,9 +963,8 @@ function DOS(datafile::String, windows; ts=0)
         fid = h5open(path, "w")
         growth = create_dataset(fid, "growth", datatype(Float64), dataspace(ne, ns))
         @showprogress 10 "Instant Growths " for (i, t) in enumerate(ts)
-            C1 = reshape(cH[:, :, t], (ne, ne));
-            R2 = reshape(rH[:, :, t+1], (ne, ne));
-            fid["growth"][:, i] = LADS.clvInstantGrowth(C1, R2);
+            v1 = vH[:, :, t]; y1 = yH[:, t];
+            fid["growth"][:, i] = clvInstantGrowth(jacobian, y1, p, v1);
         end
         for window in windows
             nu = zeros(ne, ne);
